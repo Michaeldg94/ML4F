@@ -1,0 +1,18 @@
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{lllllllll}
+\toprule
+target & model & params & RMSE & NRMSE & pcorrect & n & accuracy & MCC \\
+\midrule
+return & ARMA-GARCH (plain) & ARMA(2,2); GARCH(1,1) alpha=0.113, beta=0.871, alpha+beta=0.984 & 0.0451 & 0.0601 & 93.9935 & 285 & NaN & NaN \\
+price & ARMA-GARCH (plain) & ARMA(2,2); GARCH(1,1) alpha=0.113, beta=0.871, alpha+beta=0.984 & 0.0451 & 0.0064 & 99.3575 & 285 & NaN & NaN \\
+direction & ARMA-GARCH (plain) & ARMA(2,2); GARCH(1,1) alpha=0.113, beta=0.871, alpha+beta=0.984 & NaN & NaN & NaN & 285 & 0.6000 & 0.0759 \\
+return & ARMA-GARCH (YeoJohnson) & ARMA(0,1); GARCH(1,1) alpha=0.121, beta=0.860, alpha+beta=0.982 & 0.0444 & 0.0591 & 94.0858 & 285 & NaN & NaN \\
+price & ARMA-GARCH (YeoJohnson) & ARMA(0,1); GARCH(1,1) alpha=0.121, beta=0.860, alpha+beta=0.982 & 0.0444 & 0.0063 & 99.3674 & 285 & NaN & NaN \\
+direction & ARMA-GARCH (YeoJohnson) & ARMA(0,1); GARCH(1,1) alpha=0.121, beta=0.860, alpha+beta=0.982 & NaN & NaN & NaN & 285 & 0.6246 & 0.0627 \\
+\bottomrule
+\end{tabular}
+\caption{Test-set forecast performance for the ARMA(p,q)+GARCH(1,1) baselines (plain and Yeo-Johnson-normalised).}
+\label{tab:ex3_metrics}
+\end{table}

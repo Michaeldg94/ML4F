@@ -1,0 +1,24 @@
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{lllllllll}
+\toprule
+target & model & params & RMSE & NRMSE & pcorrect & n & accuracy & MCC \\
+\midrule
+return & NN & {'hidden_layer_sizes': (128, 64), 'activation': 'relu'} & 0.0526 & 0.0701 & 92.9896 & 285 & NaN & NaN \\
+return & GP & {'kernel': 'RBF'} & 0.0445 & 0.0592 & 94.0765 & 285 & NaN & NaN \\
+return & LSTM & {'units': 64, 'layers': 1, 'timesteps': 6} & 0.0472 & 0.0629 & 93.7116 & 285 & NaN & NaN \\
+return & BaselineMean & {} & 0.0445 & 0.0593 & 94.0730 & 285 & NaN & NaN \\
+price & NN & {'hidden_layer_sizes': (64,), 'activation': 'relu'} & 0.3272 & 0.0466 & 95.3387 & 285 & NaN & NaN \\
+price & GP & {'kernel': 'custom_RBF+Lin'} & 0.0795 & 0.0113 & 98.8677 & 285 & NaN & NaN \\
+price & LSTM & {'units': 64, 'layers': 1, 'timesteps': 6} & 1.2423 & 0.1770 & 82.3029 & 285 & NaN & NaN \\
+price & BaselineMean & {} & 3.8198 & 0.5442 & 45.5840 & 285 & NaN & NaN \\
+direction & NN & {'hidden_layer_sizes': (128,), 'activation': 'tanh'} & NaN & NaN & NaN & 285 & 0.6070 & -0.0571 \\
+direction & GP & {'kernel': 'RatQuad'} & NaN & NaN & NaN & 285 & 0.6246 & 0.0000 \\
+direction & LSTM & {'units': 32, 'layers': 2, 'timesteps': 6} & NaN & NaN & NaN & 285 & 0.6000 & -0.0423 \\
+direction & BaselineMajority & {} & NaN & NaN & NaN & 285 & 0.6246 & 0.0000 \\
+\bottomrule
+\end{tabular}
+\caption{Test-set forecast performance for each (target, model) combination.}
+\label{tab:ex2_metrics}
+\end{table}

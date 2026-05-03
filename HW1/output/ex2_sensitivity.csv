@@ -1,0 +1,37 @@
+target,model,params,RMSE,NRMSE,pcorrect,n,dropped,accuracy,MCC
+return,NN,"{'hidden_layer_sizes': (128,), 'activation': 'tanh'}",0.0461431441688252,0.061455844975987294,93.85441550240127,285,dp,,
+return,GP,{'kernel': 'RBF'},0.04447557473274112,0.0592348890659235,94.07651109340765,285,dp,,
+return,LSTM,"{'units': 32, 'layers': 2, 'timesteps': 6}",0.04511945036087015,0.060092436194514015,93.9907563805486,285,dp,,
+return,BaselineMean,{},0.04450184200729626,0.059269873191562975,94.0730126808437,285,dp,,
+price,NN,"{'hidden_layer_sizes': (128, 64), 'activation': 'relu'}",0.14996395491572764,0.02136329203800494,97.86367079619951,285,dp,,
+price,GP,{'kernel': 'custom_RBF+Lin'},0.09484278652150244,0.013510940994425052,98.6489059005575,285,dp,,
+price,LSTM,"{'units': 64, 'layers': 1, 'timesteps': 6}",1.0346194697300466,0.14738793660429617,85.26120633957038,285,dp,,
+price,BaselineMean,{},3.819838643937473,0.5441596184519847,45.58403815480153,285,dp,,
+direction,NN,"{'hidden_layer_sizes': (64,), 'activation': 'relu'}",,,,285,dp,0.624561403508772,0.0
+direction,GP,{'kernel': 'RatQuad'},,,,285,dp,0.624561403508772,0.0
+direction,LSTM,"{'units': 32, 'layers': 2, 'timesteps': 6}",,,,285,dp,0.624561403508772,0.0
+direction,BaselineMajority,{},,,,285,dp,0.624561403508772,0.0
+return,NN,"{'hidden_layer_sizes': (128,), 'activation': 'tanh'}",0.0461431441688252,0.061455844975987294,93.85441550240127,285,svar,,
+return,GP,{'kernel': 'RBF'},0.04447557473274112,0.0592348890659235,94.07651109340765,285,svar,,
+return,LSTM,"{'units': 32, 'layers': 2, 'timesteps': 6}",0.04511945036087015,0.060092436194514015,93.9907563805486,285,svar,,
+return,BaselineMean,{},0.04450184200729626,0.059269873191562975,94.0730126808437,285,svar,,
+price,NN,"{'hidden_layer_sizes': (64, 64), 'activation': 'relu'}",0.2653269863843158,0.03779746872424897,96.2202531275751,285,svar,,
+price,GP,{'kernel': 'custom_RBF+Lin'},0.052995311243757684,0.007549509556356906,99.24504904436431,285,svar,,
+price,LSTM,"{'units': 64, 'layers': 1, 'timesteps': 6}",0.9526606072875172,0.13571239020752132,86.42876097924787,285,svar,,
+price,BaselineMean,{},3.819838643937473,0.5441596184519847,45.58403815480153,285,svar,,
+direction,NN,"{'hidden_layer_sizes': (64,), 'activation': 'relu'}",,,,285,svar,0.6035087719298246,-0.05431045680332698
+direction,GP,{'kernel': 'RatQuad'},,,,285,svar,0.624561403508772,0.0
+direction,LSTM,"{'units': 32, 'layers': 1, 'timesteps': 6}",,,,285,svar,0.624561403508772,0.0
+direction,BaselineMajority,{},,,,285,svar,0.624561403508772,0.0
+return,NN,"{'hidden_layer_sizes': (128, 64), 'activation': 'tanh'}",0.0493894404545969,0.06577943160793805,93.42205683920619,285,bm,,
+return,GP,{'kernel': 'RBF'},0.04447557473274112,0.0592348890659235,94.07651109340765,285,bm,,
+return,LSTM,"{'units': 32, 'layers': 2, 'timesteps': 6}",0.04498852450524463,0.05991806231445869,94.00819376855412,285,bm,,
+return,BaselineMean,{},0.04450184200729626,0.059269873191562975,94.0730126808437,285,bm,,
+price,NN,"{'hidden_layer_sizes': (64, 64), 'activation': 'relu'}",0.2252850746046376,0.03209325096345436,96.79067490365456,285,bm,,
+price,GP,{'kernel': 'custom_RBF+Lin'},0.04716994638382631,0.006719650335849019,99.3280349664151,285,bm,,
+price,LSTM,"{'units': 64, 'layers': 1, 'timesteps': 6}",1.035250908332804,0.14747788893505698,85.2522111064943,285,bm,,
+price,BaselineMean,{},3.819838643937473,0.5441596184519847,45.58403815480153,285,bm,,
+direction,NN,"{'hidden_layer_sizes': (128,), 'activation': 'relu'}",,,,285,bm,0.6210526315789474,0.02573330578040213
+direction,GP,{'kernel': 'custom_RBF+Lin'},,,,285,bm,0.624561403508772,0.02162460797964803
+direction,LSTM,"{'units': 32, 'layers': 1, 'timesteps': 6}",,,,285,bm,0.6175438596491228,0.05633551031140423
+direction,BaselineMajority,{},,,,285,bm,0.624561403508772,0.0

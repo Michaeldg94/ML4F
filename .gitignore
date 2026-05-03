@@ -1,0 +1,28 @@
+# macOS
+.DS_Store
+
+# LaTeX build artefacts (regenerate from solution.tex with pdflatex)
+*.aux
+*.log
+*.out
+*.toc
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+*.bbl
+*.blg
+
+# Python clutter
+__pycache__/
+*.pyc
+*.pyo
+.ipynb_checkpoints/
+
+# Virtual environments
+.venv/
+env/
+venv/
+
+# Editor / IDE
+.vscode/
+.idea/

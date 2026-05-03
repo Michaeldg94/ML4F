@@ -1,0 +1,12 @@
+return,price,direction
+bm_lag2,log_price_lag1,log_ret_lag1
+log_ret_lag3,dp_lag1,log_ret_lag2
+bm_lag1,svar_lag1,log_ret_lag3
+,svar_lag3,dp_lag1
+,bm_lag2,dp_lag3
+,,svar_lag1
+,,svar_lag2
+,,svar_lag3
+,,bm_lag1
+,,bm_lag2
+,,bm_lag3
