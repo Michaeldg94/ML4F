@@ -1,0 +1,13 @@
+target,model,params,RMSE,NRMSE,pcorrect,n,accuracy,MCC
+return,NN,"{'hidden_layer_sizes': (128, 64), 'activation': 'relu'}",0.05263632577652298,0.07010380274894737,92.98961972510527,285,,
+return,GP,{'kernel': 'RBF'},0.04447557473274108,0.059234889065923495,94.07651109340766,285,,
+return,LSTM,"{'units': 64, 'layers': 1, 'timesteps': 6}",0.04721454746509401,0.06288279574122675,93.71172042587732,285,,
+return,BaselineMean,{},0.044501842007296226,0.059269873191562975,94.0730126808437,285,,
+price,NN,"{'hidden_layer_sizes': (64,), 'activation': 'relu'}",0.32720817937692814,0.046612827043547855,95.33871729564521,285,,
+price,GP,{'kernel': 'custom_RBF+Lin'},0.07948243287259034,0.011322763702134071,98.8677236297866,285,,
+price,LSTM,"{'units': 64, 'layers': 1, 'timesteps': 6}",1.2422686939837746,0.17696885170946547,82.30311482905346,285,,
+price,BaselineMean,{},3.819838643937473,0.5441596184519848,45.58403815480152,285,,
+direction,NN,"{'hidden_layer_sizes': (128,), 'activation': 'tanh'}",,,,285,0.6070175438596491,-0.05713666198699456
+direction,GP,{'kernel': 'RatQuad'},,,,285,0.624561403508772,0.0
+direction,LSTM,"{'units': 32, 'layers': 2, 'timesteps': 6}",,,,285,0.6,-0.04229630938310706
+direction,BaselineMajority,{},,,,285,0.624561403508772,0.0

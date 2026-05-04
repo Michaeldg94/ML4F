@@ -1,0 +1,13 @@
+target,model,params
+return,NN,"{'hidden_layer_sizes': (128, 64), 'activation': 'relu'}"
+return,GP,{'kernel': 'RBF'}
+return,LSTM,"{'units': 64, 'layers': 1, 'timesteps': 6}"
+return,BaselineMean,{}
+price,NN,"{'hidden_layer_sizes': (64,), 'activation': 'relu'}"
+price,GP,{'kernel': 'custom_RBF+Lin'}
+price,LSTM,"{'units': 64, 'layers': 1, 'timesteps': 6}"
+price,BaselineMean,{}
+direction,NN,"{'hidden_layer_sizes': (128,), 'activation': 'tanh'}"
+direction,GP,{'kernel': 'RatQuad'}
+direction,LSTM,"{'units': 32, 'layers': 2, 'timesteps': 6}"
+direction,BaselineMajority,{}

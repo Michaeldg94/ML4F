@@ -1,404 +1,1082 @@
-\documentclass[11pt,a4paper]{article}
+\documentclass[12pt,a4paper]{article}
 
-% --- Page geometry ---
 \usepackage[margin=2.5cm]{geometry}
-
-% --- Math ---
 \usepackage{amsmath,amssymb,amsthm}
 \usepackage{mathtools}
-
-% --- Tables and figures ---
 \usepackage{booktabs}
 \usepackage{array}
 \usepackage{graphicx}
 \usepackage{float}
 \usepackage{caption}
 \usepackage{subcaption}
-\captionsetup{labelfont=bf,font=small,skip=4pt}
-
-% --- Fonts and encoding (British English) ---
-\usepackage{lmodern}
+\usepackage{mathpazo}
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
 \usepackage[british]{babel}
+\usepackage[dvipsnames]{xcolor}
+\usepackage[authoryear,round]{natbib}
+\usepackage[colorlinks=true,linkcolor=ForestGreen,citecolor=ForestGreen,urlcolor=ForestGreen]{hyperref}
 
-% --- Typography ---
+\captionsetup{labelfont=normalfont,font=small,skip=4pt}
 \setlength{\parindent}{0pt}
 \setlength{\parskip}{0.7em}
+\setlength{\emergencystretch}{2em}
+\setcounter{tocdepth}{2}
+\setcounter{secnumdepth}{2}
+\renewcommand{\thesubsection}{\thesection\alph{subsection}}
 
-% --- Hyperlinks ---
-\usepackage[colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue]{hyperref}
+\newcommand{\probsection}[2]{%
+  \section{#2}}
+\newcommand{\probsub}[2]{%
+  \subsection{#2}}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\narrcite}[2]{\textcolor{ForestGreen}{#1~(\citeyear{#2})}}
+\makeatletter
+\renewcommand{\maketitle}{%
+  \begin{center}
+  {\Large \@title\par}
+  \vspace{0.35em}
+  {\fontsize{11pt}{13.2pt}\selectfont \@author\par}
+  \vspace{0.15em}
+  {\@date\par}
+  \end{center}
+  \vspace{0.7em}}
+\newcommand{\compacttoc}{%
+  \begingroup
+  \normalsize
+  \setlength{\parskip}{0.18em}
+  \setlength{\parindent}{0pt}
+  \renewcommand{\baselinestretch}{1.15}\selectfont
+  \renewcommand{\l@section}[2]{%
+    \vspace{0.65em}%
+    \@dottedtocline{1}{0em}{1.8em}{##1}{##2}}
+  \renewcommand{\l@subsection}[2]{%
+    \vspace{0.2em}%
+    \@dottedtocline{2}{1.85em}{2.55em}{##1}{##2}}
+  \par\noindent{\Large Contents}\par\vspace{1.6em}
+  \hypersetup{linkcolor=black}%
+  \@starttoc{toc}%
+  \hypersetup{linkcolor=ForestGreen}%
+  \endgroup}
+\makeatother
 
-% --- Suppress automatic section numbering since we use simple labels (1, 1a, ...) ---
-% Custom section commands that just print the label as a heading.
-\newcommand{\probsection}[1]{%
-  \par\vspace{1.2em}\noindent{\Large\bfseries #1}\par\vspace{0.4em}}
-\newcommand{\probsub}[1]{%
-  \par\vspace{0.6em}\noindent{\large\bfseries #1}\par\vspace{0.2em}}
+\input{output/ex1/22_ex1_report_macros.tex}
+\input{output/ex2/13_ex2_report_macros.tex}
+\input{output/ex3/13_ex3_report_macros.tex}
 
-% --- Title ---
-\title{Task 1: Machine Learning for Finance}
-\author{[Team member 1] \and [Team member 2] \and [Team member 3]}
+\title{Homework 1: 21D012 Machine Learning for Finance}
+\author{Marco Canal, Michael Duarte Gonçalves and Olivia Peter}
 \date{15 May 2026}
 
 \begin{document}
-
 \maketitle
+\vspace{0.2em}
 
-% =============================================================================
-% Exercise 1
-% =============================================================================
-\probsection{1}
+\begin{center}
+\textbf{Abstract}
+\end{center}
+\vspace{0.25em}
 
-We are asked to build a global asset causal network and a volatility spillover network for ten ETFs and assets (SPY, XLK, XLF, XLE, GLD, SLV, GSG, BTC-USD, ETH-USD, TLT) over our team-assigned epoch 2024-01-01 to 2025-12-31. For every ordered pair we select an AIC-optimal lag in $[1,5]$ from a bivariate VAR with no deterministic terms, then run a Granger F-test at that lag and record the lag in the directed table if the test rejects the null at the 5\% level. We do this analysis on log returns and on EWMA volatility, sampled at weekly and at monthly frequency, producing the four tables and four network plots that follow.
+\begingroup
+\normalsize
+This homework asks where financial predictability is real enough to survive
+formal testing and out-of-sample evaluation. We study that question in three
+settings. First, we estimate Granger networks for ten liquid assets to separate
+return lead-lag effects from volatility spillovers. Second, we use neural
+networks, LSTMs and Gaussian processes to forecast S\&P 500 returns, log prices
+and directions from the assigned Goyal-Welch predictors. Third, we compare the
+machine-learning forecasts with ARMA-GARCH baselines. The evidence is
+asymmetric. Weekly return causality is sparse. The denser monthly return
+network is less secure because the sample is short. EWMA volatility shows
+clearer propagation across equities, commodities, crypto and Treasuries.
+Gaussian processes fit log prices well because the target inherits the
+previous level, yet return gains over the mean benchmark are economically
+negligible. Direction accuracy is fragile once MCC is considered. The main
+lesson is that volatility transmission is more credible than exploitable
+one-month return prediction in this sample.
+\endgroup
 
-\probsub{1a}
+\clearpage
+\compacttoc
+\clearpage
 
-We retrieve daily adjusted closes from Yahoo Finance for the assigned epoch, align all series to the NYSE trading calendar (so that the ETF and crypto closes correspond to the same calendar days) and forward-fill at most one day for sporadic crypto gaps. We obtain 502 daily observations after cleaning. We resample these prices to weekly Friday closes and to month-end closes, then compute log returns at each frequency (104 weekly, 23 monthly returns). For volatility we use the RiskMetrics EWMA recipe employed in Lab~1, applied at the relevant frequency:
+\probsection{1}{Asset Networks}
+
+The first exercise studies two directed systems for SPY, XLK, XLF, XLE, GLD,
+SLV, GSG, BTC-USD, ETH-USD and TLT over the assigned 2024 to 2025 period:
+one system for return predictability and one system for volatility spillovers.
+The data step retrieves daily adjusted closes from Yahoo Finance, aligns ETF
+and crypto observations to the same trading calendar and forward-fills at most
+\ExOneMaxForwardFillDays{} day when a sporadic crypto gap would otherwise
+break the panel. Granger regressions compare $X_{t-\ell}$ with $Y_t$ at the
+same calendar index. If one series carries a stale close while the other series
+uses a fresh close, the lagged regressor can describe the calendar mismatch
+rather than a market response. Aligning the panel first keeps that error out of
+the test.
+The notation follows the return material from Lecture 2 and the HW1
+handout. Let $P_t$ be the adjusted price at date $t$, let $R_t$ be the
+corresponding simple one-period return and let $r_t$ be the log return:
 \[
-\sigma_t^2 \;=\; \lambda \, \sigma_{t-1}^2 \;+\; (1-\lambda)\, r_{t-1}^2,
-\qquad \lambda = 0.94,
+r_t=\ln(1+R_t)=\ln\left(\frac{P_t}{P_{t-1}}\right)
+    =\ln P_t-\ln P_{t-1},
+\qquad
+r_t[k]=r_t+r_{t-1}+\cdots+r_{t-k+1}.
 \]
-which we implement column-wise as the square root of an exponential moving average of squared log returns. Causality at every lag $\ell$ is judged with the standard Granger F-statistic on nested OLS regressions that include $\ell$ own lags and $\ell$ cross lags; for the lag-selection step we set \texttt{trend='n'} in \texttt{statsmodels.VAR.select\_order} so that the search mirrors the R convention \texttt{type='none'} taught in PyLab~3. The diagonal of every table is blank, off-diagonal entries are the AIC-optimal lag if the directed test rejects the null and 0 otherwise.
+The second expression, $r_t[k]$, is the $k$-period log return. It tells us how
+returns aggregate over time: a multi-period log return is obtained by adding
+one-period log returns instead of multiplying gross returns. The additive
+identity is what lets the later AR, VAR and GARCH equations operate directly on
+returns with linear lag terms.
+The notation also gives a first expectation before we look at the tables.
+Return levels should be noisy because they measure new information arriving
+between two dates. Volatility should be more persistent because it is built
+from squared returns. The squaring operation keeps the size of shocks even
+after their sign has disappeared.
 
-\probsub{1b}
+\probsub{1a}{Data, EWMA Volatility and Granger Setup}
 
-Tables~\ref{tab:returns_weekly} and~\ref{tab:returns_monthly} report the directed returns-causality lag tables for the weekly and monthly samples. Figures~\ref{fig:net_ret_w} and~\ref{fig:net_ret_m} plot the corresponding networks, with nodes coloured by asset class and edge labels giving the lag.
+The daily adjusted-close panel contains \ExOneDailyObservations{} cleaned
+observations. Weekly Friday sampling gives \ExOneWeeklyReturnObservations{}
+weekly returns. Month-end sampling gives \ExOneMonthlyReturnObservations{}
+monthly returns. Volatility follows the EWMA definition used in Lecture 2 and
+Lab session 1:
+\[
+\sigma_t^2 = \lambda \sigma_{t-1}^2 + (1-\lambda)r_{t-1}^2,
+\qquad \lambda=\ExOneEwmaLambda.
+\]
+Here $\sigma_t^2$ is the variance estimate carried into date $t$,
+$\sigma_{t-1}^2$ is yesterday's estimate and $r_{t-1}^2$ is the most recent
+squared log return. The update is recursive. Each date keeps the fraction
+$\lambda$ of the old variance estimate and adds the fraction $1-\lambda$ of
+the new squared return. With $\lambda=\ExOneEwmaLambda$, the new shock receives
+weight \ExOneEwmaShockWeight{} and the remaining \ExOneEwmaLambda{} is carried
+from the previous variance estimate. The weighted-sum and recursive formulas
+describe the same object. The recursive formula shows the financial channel.
+This is the Lab 1 RiskMetrics choice $\lambda=\ExOneEwmaLambda$, so recent
+shocks matter but old shocks are not erased immediately. Volatility is a state
+variable. A large return shock enters tomorrow's
+variance estimate and then decays geometrically instead of disappearing after
+one observation. The volatility network should contain more edges than the
+return network because the dependent variable already stores past shock size.
+The sign of the shock is not the key object here. For example, a large
+negative return and a large positive return both raise $r_{t-1}^2$, so both
+raise the next volatility estimate. That is why volatility can show a clearer
+pattern than signed returns: it keeps the size of the market move even when the
+direction is gone.
+The EWMA half-life is
+$\log(0.5)/\log(\lambda)\approx \ExOneEwmaHalfLife$ sampling periods. After
+that many observations, half of the original shock weight remains inside the
+variance estimate. The signed return may already look like noise, while the
+same shock can still move the volatility state.
 
-\input{output/table_returns_weekly.tex}
-\input{output/table_returns_monthly.tex}
+For causality, the report uses the bivariate Granger setup from Lecture 4. In
+the equations below, $Y_t$ is the receiving asset being forecast,
+$X_t$ is the candidate source asset, $h$ is the chosen lag length and
+$\epsilon_t$ is the forecast error. The unrestricted full model $M_f$ contains
+two information blocks: the own lags of $Y$ and the source lags of $X$. The
+restricted null model $M_r$ removes the source block and keeps only the own
+lags of $Y$:
+\[
+\begin{aligned}
+\text{Full model }M_f:\quad
+Y_t={}&a_0+a_1Y_{t-1}+\cdots+a_hY_{t-h}\\
+&+b_1X_{t-1}+\cdots+b_hX_{t-h}+\epsilon_t,
+\end{aligned}
+\]
+\[
+\text{Restricted model }M_r:\quad
+Y_t=a_0+a_1Y_{t-1}+\cdots+a_hY_{t-h}+\epsilon_t,
+\]
+\[
+H_0:\,b_1=b_2=\cdots=b_h=0.
+\]
+The coefficients $a_1,\ldots,a_h$ measure persistence in the receiving asset.
+The coefficients $b_1,\ldots,b_h$ are exactly the restrictions being tested.
+Under $H_0$, the restricted model is enough because the source asset adds no
+linear forecasting power once $Y$'s own history is included. Rejecting $H_0$
+means the full model has lower residual variance by enough to justify the
+extra source-lag block. The test is a forecast-comparison procedure. If $X$
+Granger-causes $Y$ in this table, a linear forecaster that
+uses the past of both $X$ and $Y$ predicts $Y_t$ better than a linear forecaster
+that uses only the past of $Y$. It does not mean that a shock to $X$ would move
+$Y$ under an intervention. The test has no trading experiment, no instrument,
+no order-flow channel and no control for common news. A rates shock, a dollar
+shock or a volatility-regime shift could move both assets and create a lagged
+forecasting relation. The edge records a narrower statement: the source asset
+contains incremental lagged information for this receiving asset in this sample
+and in this linear specification.
+
+\narrcite{Tank \textit{et al.}}{tank_neural_granger_2021} help us
+state the limitation precisely: many classical Granger procedures assume
+linear dynamics, even though real interactions can be nonlinear. In the
+notation above, our F-test can only find predictive content that enters
+through the linear block $b_1X_{t-1}+\cdots+b_hX_{t-h}$. A missing edge records
+no detectable linear contribution at the selected lag in this sample. It does
+not rule out a stress-threshold channel, a nonlinear
+interaction or a relation that operates through a third asset.
+\narrcite{Tank \textit{et al.}}{tank_neural_granger_2021} propose
+structured neural networks that search for nonlinear Granger structure by
+shrinking source-series inputs that do not help the forecast. We do not
+estimate that richer object here. Our tables should therefore be read as
+linear Granger evidence, not as a test of every possible nonlinear link.
+
+Lag selection uses the VAR notation from Lecture 4:
+\[
+y_t=A_1y_{t-1}+\cdots+A_py_{t-p}+u_t,
+\]
+where $y_t$ stacks the asset returns or volatilities, $A_1,\ldots,A_p$ are
+coefficient matrices and $u_t$ is the vector of innovations. For every ordered
+pair, the implementation fits a bivariate VAR with no deterministic trend. In
+Python this is \code{statsmodels.VAR.select\_order} with \code{trend='n'},
+the same deterministic specification as the \code{type='none'} setup used in
+the Python lab seen in class for Lecture 4 on VAR and Granger causality. AIC
+chooses $p$ over lags up to \ExOneMaxGrangerLag{} before the Granger F-test is
+evaluated. Mechanically, each extra lag adds one own-lag coefficient and one
+source-lag coefficient to the receiving-asset equation.
+AIC accepts that extra lag only when the improvement in residual fit is large
+enough to compensate for the larger parameter count. The advantage is that the
+lead-lag horizon is selected by a common likelihood penalty. The limitation is
+that a short sample can reward a lag that fits one historical episode rather
+than a channel that will survive in the next window. In simple terms, AIC is a
+way to choose how far back the test should look. It tries to balance two
+forces: fit the data well while avoiding too many lags for no reason. That is
+useful because we do not have to choose the lag by hand. It also means that
+large selected lags, especially in the monthly tables, need a cautious reading.
+They may describe a slow economic channel. They may also describe one
+episode that the model happened to fit well.
+
+The four causality tables are decision tables, not effect-size tables. Rows are
+candidate source assets and columns are receiving assets. A
+non-zero entry is the AIC-selected lag when the
+\ExOneGrangerAlphaPercent\% Granger test rejects the null. A zero means the
+source lags did not lower the residual variance enough to pass the nested
+F-test after the receiver's own lags were already included. The diagonal is
+omitted because an asset is not tested as a source for itself. The network
+figures redraw the same table decisions as arrows. They help identify source
+and receiver nodes visually. They do not add p-values, coefficient sizes or
+portfolio weights. A portfolio manager should use them as a first filter for
+follow-up models, not as direct trade signals. The number printed in a cell is
+therefore not the strength of the effect. It is only the AIC-chosen delay at
+which the source helped enough to pass the Granger test.
+For example, the weekly return table has SPY $\rightarrow$ ETH at the selected
+short lag. That means SPY's recent return helped forecast ETH's next return
+after ETH's own past was already included. It does not say that SPY
+mechanically moves ETH. It also does not say how large the return effect is. By
+contrast, SPY and XLK have a very high same-week correlation. The table
+does not give a SPY $\rightarrow$ XLK return arrow. They move together, but
+neither one leads the other in a useful way in this test.
+
+\probsub{1b}{Return Causality Networks}
+
+\input{output/ex1/07_ex1_causality_returns_weekly.tex}
+\input{output/ex1/09_ex1_causality_returns_monthly.tex}
 
 \begin{figure}[H]
 \centering
 \begin{subfigure}[t]{0.49\linewidth}
 \centering
-\includegraphics[width=\linewidth]{output/network_returns_weekly.pdf}
+\includegraphics[width=\linewidth]{output/ex1/18_ex1_network_returns_weekly.pdf}
 \caption{Weekly.}
 \label{fig:net_ret_w}
 \end{subfigure}\hfill
 \begin{subfigure}[t]{0.49\linewidth}
 \centering
-\includegraphics[width=\linewidth]{output/network_returns_monthly.pdf}
+\includegraphics[width=\linewidth]{output/ex1/19_ex1_network_returns_monthly.pdf}
 \caption{Monthly.}
 \label{fig:net_ret_m}
 \end{subfigure}
-\caption{Returns-causality networks. Edges run from cause to effect; the integer label is the AIC-optimal VAR lag at which the Granger test rejects at 5\%.}
+\caption{Returns-causality networks. Edges run from cause to effect. Labels show the AIC-selected lag, not the economic magnitude of the effect.}
 \label{fig:net_returns}
 \end{figure}
 
-At weekly frequency the returns network is sparse, with only six significant directed edges out of ninety ordered pairs (about 7\%). All chosen lags equal one, which is what we would expect from broadly efficient secondary markets where any predictability beyond a single week is quickly arbitraged away. The few edges that survive concentrate around ETH: SPY and XLK both Granger-cause weekly Ether returns and Ether in turn leads weekly returns of TLT and GLD. We read this as a behavioural channel rather than a fundamental one: in 2024-2025 risk-on or risk-off shifts in equities (and especially in tech, which now drives the index) propagate into crypto with a one-week lag through the marginal retail and institutional investor who rebalances slowly between equities and crypto. The link from ETH to TLT and GLD is more surprising and is best read as a sentiment proxy: weeks of strong crypto performance often coincide with the unwind of safe-haven positions in long Treasuries and gold one week later. The remaining edge GSG~$\rightarrow$~GLD captures the dominant 2024 narrative that broad commodities (heavily weighted to oil) led precious metals as an early signal of inflation persistence, with gold then catching up.
+Table \ref{tab:returns_weekly} gives the most stable evidence in the return
+block: only \ExOneReturnWeeklyEdges{} of \ExOneOrderedPairs{} ordered pairs
+survive the \ExOneGrangerAlphaPercent\% test. The table is sparse. The
+surviving links all use a short AIC lag. That short lag is important. It says
+that, when a return link appears, it is a quick lead-lag relation rather than a
+long delay. SPY and XLK lead ETH, which fits a simple market story:
+crypto can react after a broad equity or technology move changes risk
+appetite. GSG leading GLD is also plausible because a broad commodity move can
+come before a gold response when investors reprice inflation. The other links,
+such as ETH leading GLD and TLT or TLT leading XLK, are harder to read as
+stable economic mechanisms. They point to relations worth checking. They are
+not strong enough to become trading rules without a longer sample or a rolling
+check.
 
-At monthly frequency the network becomes considerably denser (fourteen edges), the lags spread across the whole admissible range and TLT and SPY emerge as strong causal hubs. Long Treasuries Granger-cause SPY at lag 5, XLF at lag 1 and BTC and ETH at lag 1, mirroring the well-documented role of the long end of the yield curve as the discount-rate channel through which monetary-policy expectations transmit to risky assets. SPY itself Granger-causes XLE (lag 2), SLV (lag 5) and GSG (lag 1) and XLK leads GSG at lag 1, consistent with a sample that contains the equity-led commodity rebound of mid-2024 and the late-2025 reflation. We caution that with only 23 monthly observations the AIC frequently selects the boundary lag of 5, which is a statistical signal that the lag-selection procedure is operating at the limit of its usable range; some of the longest-lag edges should therefore be regarded as borderline rather than firmly established. Concretely, a bivariate VAR$(5)$ on a 23-observation series fits eleven parameters per equation on eighteen post-lag observations, so the effective degrees of freedom for each Granger F-test on this sample are tiny and a non-trivial fraction of the rejected nulls must be expected to be sample-specific. Reading the two frequencies together, the lesson is the standard one: high-frequency returns are very close to a martingale and admit only a handful of one-step predictabilities, while at monthly horizons macro-driven persistence becomes detectable but at the cost of much larger sampling uncertainty.
+Figure \ref{fig:net_returns} shows the same decisions without scanning the
+asset-by-asset matrix. The weekly graph has no dominant hub. If one market were
+moving first in a stable way, many arrows would leave that asset. Instead, the
+arrows are scattered. This is consistent with liquid markets: much of the news
+is priced into several assets during the same week. Once the receiver's own
+past returns are already in the regression, little extra cross-asset return
+information remains.
 
-The picture is best understood against the backdrop of contemporaneous correlations. At weekly frequency SPY and XLK have a return correlation of 0.93, the two precious metals 0.70 and BTC and ETH 0.73; cross-block correlations are almost all below 0.35 in absolute value. These large within-block correlations explain why most of the within-block ordered pairs (for instance SPY and XLK) carry no Granger arrow even though the two assets clearly co-move: when two series are nearly contemporaneous, neither can claim to lead the other in regression terms and the within-block predictability is absorbed by the contemporaneous correlation rather than by lagged cross terms.
+Table \ref{tab:returns_monthly} is denser, with \ExOneReturnMonthlyEdges{}
+edges. The monthly evidence is also less secure. The sample has only
+\ExOneMonthlyReturnObservations{} monthly returns and the lag search allows
+horizons up to \ExOneMaxGrangerLag{} months. TLT becomes a prominent source,
+with arrows into SPY, XLF, BTC and ETH. The macro channel is discount-rate
+transmission:
+long-duration Treasury prices reflect discount-rate and growth-news revisions,
+which can spill into equities and speculative assets. SPY also sends arrows to
+XLE, SLV and GSG, which fits a broad risk and commodity story for this
+particular two-year window. At the same time, several monthly arrows sit near
+the upper end of the lag search. With only
+\ExOneMonthlyReturnObservations{} monthly returns, those long lags consume
+degrees of freedom quickly. A VAR at the maximum lag leaves
+\ExOneMonthlyMaxLagPostLagObservations{} post-lag observations and estimates
+\ExOneMaxLagParametersPerEquation{} coefficients per receiving-asset equation.
+AIC can still prefer that lag when residual fit improves. The F-test has
+little independent information left. The defensible reading is ``possible
+macro-state transmission'', not a robust market-timing rule. The monthly table
+therefore needs caution. AIC sometimes reaches for long lags because they fit
+the small sample better. That gives us a useful warning: the dense monthly
+network is a set of leads to investigate, not proof of strong predictability.
+For example, TLT leading SPY near the maximum allowed lag can be read as a
+possible rates channel: long Treasury prices may react first to
+monetary-policy expectations. Equities may adjust later through discount
+rates. But with only \ExOneMonthlyReturnObservations{} monthly returns, that
+is a long delay to estimate. The table tells us where to look. It does not
+prove a dependable long-horizon trading delay.
 
-\probsub{1c}
+The contrast with contemporaneous correlations clarifies the mechanism. Weekly
+SPY to XLK correlation is \ExOneCorrReturnWeeklySpyXlk{}, GLD to SLV is
+\ExOneCorrReturnWeeklyGldSlv{} and BTC to ETH is \ExOneCorrReturnWeeklyBtcEth{}.
+Those values show strong same-period comovement inside natural economic
+clusters. This means the assets often move together in the same week. That
+matters for portfolio risk, diversification and covariance estimation. The
+Granger tables ask a harder question. Once an asset's own past returns are
+included, does another asset's past return still help predict it? High
+same-week correlation does not prove that. Two assets can move together because
+they react to the same news at the same time. That does not mean one asset
+usefully leads the other. The practical conclusion is simple: the evidence for
+covariance is clear. The evidence for cross-asset return forecasting is weak.
 
-Tables~\ref{tab:vol_weekly} and~\ref{tab:vol_monthly} report the directed volatility spillover lag tables and Figure~\ref{fig:net_vol} plots the corresponding networks.
+One event helps interpret the crypto links. In January 2024, the SEC approved
+spot Bitcoin ETPs \citep{sec_spot_bitcoin_etp_2024}. This happened during our
+sample and made Bitcoin easier to trade through regulated exchange products.
+For example, the weekly table reports SPY $\rightarrow$ ETH at the selected
+short lag. One possible interpretation is a broad risk channel: equity-market
+news moves first, then crypto adjusts as investors change risk exposure. The
+SEC event makes that interpretation plausible for this period. It does not
+prove the link or turn it into a trading rule.
 
-\input{output/table_vol_weekly.tex}
-\input{output/table_vol_monthly.tex}
+\probsub{1c}{Volatility Spillover Networks}
+
+\input{output/ex1/11_ex1_causality_vol_weekly.tex}
+\input{output/ex1/13_ex1_causality_vol_monthly.tex}
 
 \begin{figure}[H]
 \centering
 \begin{subfigure}[t]{0.49\linewidth}
 \centering
-\includegraphics[width=\linewidth]{output/network_vol_weekly.pdf}
+\includegraphics[width=\linewidth]{output/ex1/20_ex1_network_vol_weekly.pdf}
 \caption{Weekly.}
 \label{fig:net_vol_w}
 \end{subfigure}\hfill
 \begin{subfigure}[t]{0.49\linewidth}
 \centering
-\includegraphics[width=\linewidth]{output/network_vol_monthly.pdf}
+\includegraphics[width=\linewidth]{output/ex1/21_ex1_network_vol_monthly.pdf}
 \caption{Monthly.}
 \label{fig:net_vol_m}
 \end{subfigure}
-\caption{EWMA volatility spillover networks (RiskMetrics, $\lambda{=}0.94$). Edges run from cause to effect; the integer label is the AIC-optimal VAR lag at which the Granger test rejects at 5\%.}
+\caption{EWMA volatility-spillover networks. Edges run from source volatility to receiver volatility. Labels show the AIC-selected lag.}
 \label{fig:net_vol}
 \end{figure}
 
-Volatility produces several times more significant edges than returns at the same frequency (twenty-one weekly and seventeen monthly volatility edges versus six and fourteen for weekly and monthly returns respectively). The reason is mechanical and well known: realised volatility is highly persistent and EWMA recursively carries past shocks forward with a per-period half-life of $\log(0.5)/\log(\lambda) \approx 11.2$ periods at $\lambda{=}0.94$. Once two assets share even a moderate exposure to the same volatility regime, lagged cross terms become statistically informative even when the contemporaneous return correlation is modest. We emphasise that this is precisely what makes a volatility spillover analysis interesting: the channels we identify here are about the propagation of the second-order risk regime, not about the first-order direction of prices.
+Volatility is much more connected than returns. Tables \ref{tab:vol_weekly}
+and \ref{tab:vol_monthly} contain \ExOneVolWeeklyEdges{} weekly edges and
+\ExOneVolMonthlyEdges{} monthly edges, compared with
+\ExOneReturnWeeklyEdges{} weekly return edges and
+\ExOneReturnMonthlyEdges{} monthly return edges. That gap is the empirical
+footprint of a second moment that carries memory. EWMA smooths squared returns,
+so a shock in one market can remain visible in the volatility state after the
+signed return itself has faded. This is the main difference between the two
+networks. Returns ask, ``which way did prices move?'' Volatility asks, ``how
+nervous is the market?'' Nervousness tends to last longer than the sign of one
+return, so it is easier for volatility to spill from one asset group to
+another.
 
-At weekly frequency the spillover network is dominated by equity-block sources. SPY, XLK, XLF and XLE each emit several directed arrows (mostly at lag 2), with TLT, GLD and GSG appearing repeatedly as receivers. This is the familiar shape of a "fear" map: when the equity volatility regime tightens, the volatility of safe-haven assets and broad commodities adjusts a week or two later, as investors rebalance hedges and the new variance level is digested by macro-trend strategies. The two-week lag is consistent with the typical rebalancing window of monthly-mandate funds and with the time it takes for option-implied vol to pass through to realised cross-asset vol. ETH is essentially isolated in the weekly volatility map, while BTC receives edges from XLF (lag 1), SPY (lag 1) and XLE (lag 1): in this period (which contains the spot-Bitcoin-ETF approval of January 2024 and the post-election crypto rally) Bitcoin volatility increasingly tracks the equity volatility regime, while Ether decouples on idiosyncratic supply-side news.
+Table \ref{tab:vol_weekly} has a recognisable risk-channel structure. SPY, XLK,
+XLF and XLE volatility lead volatility in GLD, GSG, BTC and TLT. Many of these
+weekly links use short AIC lags. That timing is believable: an equity shock
+can appear first in stock volatility, then show up in hedges,
+commodities, Treasuries or crypto after investors rebalance. TLT appears mainly
+as a receiver rather than a source in the weekly volatility table. The table is
+therefore consistent with a simple risk story: stress starts in the equity
+block and then spreads into assets used for hedging or for expressing broader
+macro views.
 
-At monthly frequency the same broad picture holds but the channels reorder. The strongest single causal cluster sits around the precious-metals-and-commodities block: GLD~$\rightarrow$~XLK (lag 5), GLD~$\rightarrow$~SLV (lag 5), GLD~$\rightarrow$~ETH (lag 5), GSG~$\rightarrow$~ETH (lag 4) and GSG~$\rightarrow$~XLK (lag 5). XLK is fed at the long horizon by XLE (lag 1), GLD (lag 5) and GSG (lag 5), while emitting causally to SPY (lag 1), XLF (lag 1) and GSG (lag 5); it sits at the centre of the equity-block and equity-to-commodities transmission. These long-lag arrows reflect the 23-observation small-sample regime, where AIC frequently selects the boundary lag of 5; we read them as suggestive of a slow inflation-and-real-rates channel through which commodity volatility shocks gradually feed equity-sector volatility, but we would not bet on their stability in a separate two-year window.
+Figure \ref{fig:net_vol} adds a structural reading that the table alone hides.
+The weekly volatility graph has clearer source-to-receiver blocks than the
+return graph. Equity volatility is especially integrated: SPY to XLK volatility
+correlation is \ExOneCorrVolWeeklySpyXlk{}, SPY to XLF is
+\ExOneCorrVolWeeklySpyXlf{} and SPY to XLE is \ExOneCorrVolWeeklySpyXle{}.
+The relevant mechanism is a conditional-risk update. If the weekly table
+contains an edge $i\rightarrow j$ at lag $\ell$, then $\sigma_{i,t-\ell}$ is a
+candidate feature for forecasting $\sigma_{j,t}$ in a multivariate volatility
+model. That feature would change the next-period variance estimate for asset
+$j$. Through the covariance matrix it would affect VaR, expected shortfall,
+margin usage or risk-budget allocations. For risk management, the implication
+is direct. When sector volatility leads
+Treasury, commodity or crypto volatility, the risk forecast for the receiving
+asset should condition on the earlier sector shock.
 
-The volatility contemporaneous correlations make the small-sample issue explicit: at monthly frequency the absolute correlation between SPY-vol and ETH-vol reaches 0.98, between BTC-vol and SPY-vol 0.95 and between GLD-vol and SPY-vol $-0.91$. With twenty-three observations and bilateral correlations this large, the bivariate VARs are estimated on data with very little independent information and many of the long-lag edges are likely to be contaminated by the weekly-EWMA propagation of a single common volatility shock (notably the August 2024 yen-carry unwind and the spring 2025 tariff scare). At weekly frequency the corresponding correlations are typically in the 0.5 to 0.9 range and the network is more credible.
+Table \ref{tab:vol_monthly} shifts the emphasis toward commodities, metals and
+crypto. GLD and GSG become visible sources, while ETH is mostly a receiver.
+The aggregation mechanism changes the object being tested. At the monthly
+frequency, the shock being measured is less about the first trading response
+and more about a regime that persists through the month: inflation concern,
+commodity repricing or a broader speculative-risk adjustment. The limitation
+comes from smoothing and sample size. Monthly EWMA values carry past shocks
+forward. With only
+\ExOneMonthlyVolObservations{} volatility observations the test can overstate
+the stability of slow-moving relationships. Here AIC again deserves attention:
+several monthly volatility arrows use long selected lags, often near the
+maximum allowed value. That can point to slow inflation or real-rate channels,
+but it can also be a small-sample effect. The main evidence is not any single
+arrow. It is the contrast across objects: return levels are hard to predict,
+while volatility regimes propagate across assets more clearly.
 
-In summary, the returns network is broadly consistent with weak-form efficient markets at high frequency, with only modest monthly predictability driven by the rates channel (TLT~$\rightarrow$~SPY, TLT~$\rightarrow$~financials, TLT~$\rightarrow$~crypto). The volatility network is far denser, with the equity block (SPY, XLK, XLF, XLE) acting as the dominant source of weekly fear and TLT/GLD/GSG acting as receivers and with the precious-metals-and-energy block taking on a more central role at the monthly horizon. The asymmetry between returns sparsity and volatility density is the central data-science lesson of this exercise: prices are hard to predict, but the second-moment regime is highly contagious.
+The Exercise 1 message is practical. The return tables are useful for finding
+possible lead-lag stories. Most of those stories are weak. The volatility
+tables are more convincing because risk states have memory. AIC applies the
+same lag-selection rule across pairs. It does not decide whether the story
+is economically strong. We still need to ask whether the selected lag makes
+sense. A short weekly lag is more credible because the weekly sample has many
+more observations and the mechanism is natural: an equity-volatility shock can
+be noticed first in SPY, XLK, XLF or XLE and then show up shortly after in
+hedges, commodities, Treasuries or crypto as investors rebalance. That is why
+weekly volatility links such as equity-sector volatility leading GLD, GSG, BTC
+or TLT are easier to interpret. A lag near the maximum allowed monthly horizon
+is different. With only \ExOneMonthlyReturnObservations{} monthly returns or
+\ExOneMonthlyVolObservations{} monthly volatility observations, a lag near
+\ExOneMaxGrangerLag{} leaves very little data after lagging. TLT leading SPY
+near that maximum lag in returns and GLD or GSG leading other assets at long
+lags in volatility, may point to a slow rates, inflation or commodity channel.
+These patterns are not enough for portfolio decisions. They should be checked
+in a longer sample, in rolling windows or with another forecasting model.
 
-% =============================================================================
-% Exercise 2
-% =============================================================================
-\probsection{2}
+\probsection{2}{S\&P 500 Forecasting}
 
-We are asked to forecast the monthly SP500 series 1927-2021 with our team-assigned Goyal-Welch indicators (dp, svar, bm) plus lags of these indicators and lags of the target, comparing a multilayer perceptron, an LSTM and a Gaussian-process regression across three target specifications (return, price, direction) and asking which target works best. We also do feature selection and a sensitivity analysis on the exogenous variables. The full pipeline lives in the notebook \texttt{exercise\_02.ipynb}, which we ran on a Colab GPU runtime; the artefacts we discuss below live in \texttt{output/ex2\_*}.
-
-\probsub{2a}
-
-We load the Goyal-Welch monthly file, restrict to 1927-01 to 2021-12 and construct the three target series:
+The second exercise follows the HW1 forecasting brief: use the assigned
+Goyal-Welch predictors, their lags and target lags to compare neural networks,
+LSTMs and Gaussian-process models. For this team the assigned predictors are
+dp, svar and bm. The three targets separate three different forecasting
+questions:
 \[
-r_{t+1} \;=\; \log P_{t+1} - \log P_t,\qquad
-p_{t+1} \;=\; \log P_{t+1},\qquad
-d_{t+1} \;=\; \mathbf{1}\{r_{t+1} > 0\},
+r_{t+1}=\ln P_{t+1}-\ln P_t,\qquad
+p_{t+1}=\ln P_{t+1},\qquad
+d_{t+1}=\mathbf{1}\{r_{t+1}>0\}.
 \]
-giving 1140 monthly observations after the NA-drop. Features are the lags 1, 2, 3 of the natural target series (log return for return and direction, log price for price) plus the lags 1, 2, 3 of dp, svar, bm: 12 candidate features in total. We split chronologically into 60\% training (682 obs), 15\% validation (170 obs) and 25\% test (285 obs); the validation block is used only to select hyperparameters, after which the final model is refit on the train$+$validation block before scoring on the held-out test set. Both the L1 feature-selection step and the inner cross-validation it relies on use a \texttt{TimeSeriesSplit} so that no fold ever validates on data preceding the data it was trained on. Feature scaling and the L1 feature selection step (LassoCV for return and price, $\ell_1$-penalised LogisticRegressionCV for direction) are fitted on the training set only and then applied to validation and test, in line with the leakage warnings of Lab~1. We compare a multilayer perceptron over an 8-cell grid (hidden sizes $(64,)$, $(128,)$, $(64,64)$, $(128,64)$ each with ReLU and tanh), a Gaussian-process regressor over four kernels (RBF, Matern with $\nu=2.5$, RationalQuadratic and a custom non-stationary additive RBF$+$Linear$+$WhiteNoise) with two restarts of the kernel-hyperparameter optimiser and an LSTM over a 4-cell grid varying width (32, 64), depth (1, 2 layers) and timestep window (6, 12) with early stopping on a 10\% internal validation slice. Each model picks its best configuration on the validation NRMSE (or accuracy for direction), then refits on train$+$validation and is scored on the held-out test set. We use the Lab~1 normalised RMSE,
+The first target, $r_{t+1}$, asks for next month's log return. It removes the
+known price level and leaves only the new payoff. The second target,
+$p_{t+1}$, asks for next month's log price level. That target is easier to fit
+because $p_t$ already carries most of the information needed to approximate
+$p_{t+1}$ in a persistent index. The third target, $d_{t+1}$, records only the
+sign of the next return. It equals one for an up month and zero otherwise.
+Features use up to \ExTwoTargetLagCount{} lags of the target-relevant series
+and up to \ExTwoExogenousLagCount{} lags of dp, svar and bm, giving
+\ExTwoCandidateFeatureCount{} candidate features before selection. The
+chronological split is \ExTwoTrainSharePercent\% train,
+\ExTwoValidationSharePercent\% validation and \ExTwoTestSharePercent\% test.
+After date filtering and NA removal the panel has \ExTwoPanelObservations{}
+monthly observations. Lag construction and next-month target alignment leave
+\ExTwoDesignObservations{} usable rows: \ExTwoTrainObservations{} for
+training, \ExTwoValidationObservations{} for validation and
+\ExTwoTestObservations{} for testing. Feature scaling and feature selection
+are fitted before the test block is touched. The test score is a forecast on
+later calendar months, not a random split that mixes future regimes into the
+training set.
+
+The feature-selection layer is deliberately conservative. Return and price
+regressions use \code{LassoCV}. Direction uses an
+$\ell_1$-penalised \code{LogisticRegressionCV}. The inner validation folds use
+\code{TimeSeriesSplit}, so a model is never validated on data that occur before
+its training data. This prevents a common financial leakage mechanism: random
+folds would let coefficients learn from recessions, crises or rallies that
+occur after the months they are asked to forecast.
+
+The model grids are small because the experiment asks whether the assigned
+predictors contain stable signal, not whether a very large search can overfit
+the validation block. The NN grid compares one-layer and two-layer MLPs with
+ReLU and tanh activations. The GP grid compares RBF, Matern,
+RationalQuadratic and additive kernels that include linear and white-noise
+components. The LSTM grid varies width, depth and sequence length, then uses
+early stopping on an internal validation slice. The advantage is comparability:
+every model sees the same chronological information set. The limitation is
+also explicit: a larger hyperparameter search could change validation rankings,
+but it would not remove the low signal-to-noise ratio of monthly returns.
+
+The Python lab seen in class for Lecture 5 on NNET, GaussProc and LSTM
+forecasting defines the scoring convention. To keep the tables readable, the
+report writes that convention in mathematical form:
 \[
-\mathrm{NRMSE}(\hat y) \;=\; \sqrt{\dfrac{\mathrm{MSE}(\hat y, y)}{\overline{\sum_t (y_t - \bar y)^2}}},
-\qquad \mathrm{pcorrect} \;=\; 100 (1 - \mathrm{NRMSE}),
+\begin{aligned}
+\mathrm{MSE} &=
+\frac{1}{N}\sum_{t=1}^{N}(y_t-\widehat y_t)^2,\\
+\mathrm{NRMSE}
+&=
+\sqrt{\frac{\mathrm{MSE}}
+{\sum_{t=1}^{N}(y_t-\widehat\mu_y)^2}},\\
+\mathrm{pcorrect}
+&=100(1-\mathrm{NRMSE}).
+\end{aligned}
 \]
-together with raw RMSE for the regression targets and accuracy and the Matthews correlation coefficient for the direction target. The naive benchmarks are the in-sample mean for regression targets and the in-sample majority class for direction.
+Here $N$ is the number of test observations, $y_t$ is the realised regression
+target, $\widehat y_t$ is the model forecast and $\widehat\mu_y$ is the sample
+mean used only to scale the scoring error. The denominator uses a
+total-sum-of-squares scale. Dividing by that scale turns RMSE into an error
+relative to the dispersion of the target, which is why the transformed
+pcorrect values sit near the upper end of the scale. This pcorrect is not the
+same object as direction accuracy. It is computed as
+$100(1-\mathrm{NRMSE})$, so it measures a scaled regression error rather than
+the probability of getting the sign right. The convention is kept because it
+matches the course lab and the original solution values.
 
-The Lasso step itself reveals the first substantive finding. For the return target the surviving features are bm\_lag1, bm\_lag2 and log\_ret\_lag3; lags of dp and of svar are shrunk to zero and only the third lag of the target itself survives alongside two book-to-market lags. For the price target the surviving features are log\_price\_lag1, dp\_lag1, svar\_lag1, svar\_lag3 and bm\_lag2: the lagged log price dominates as expected and a small handful of indicator lags is kept. The direction target is the most permissive: the L1 logistic with TimeSeriesSplit inner CV does not shrink any of the eleven candidate lags to zero, so the classifier sees the full feature set. In other words, at monthly frequency the autoregressive component (lagged log returns and lagged log price) carries most of the information the L1 selector keeps; among the assigned indicators, book-to-market is the most consistently retained.
+The neural-network, LSTM and GP models map into the notation from Lecture 5.
+For a recurrent model, $x_t$ is the vector of predictors
+observed at time $t$, $h_t$ is the hidden state carried forward from the past,
+$W_h$ and $W_x$ are weight matrices, $b$ is a bias and $\sigma$ is the
+activation function:
+\[
+h_t=\sigma(W_hh_{t-1}+W_xx_t+b),\qquad
+y_t=\phi(W_yh_t+c).
+\]
+The hidden state $h_t$ is the memory channel. Information from earlier months
+can reach the forecast only if it is encoded into that state and carried
+forward by the recurrence. Lecture 5 shows how the LSTM makes this channel more
+selective by adding gates. For example,
+\[
+f_t=\sigma(W_fx_t+U_fh_{t-1}+b_f),\qquad
+i_t=\sigma(W_ix_t+U_ih_{t-1}+b_i).
+\]
+The forget gate $f_t$ decides how much old state to retain and the input gate
+$i_t$ decides how much new information to write. That design matches a
+financial series in which a macro or risk regime can last for several months
+and then fade. The GP is different. It does not carry a
+hidden state. It defines similarity through a kernel. Its point forecast is the
+posterior mean
+\[
+\bar f_*=\mathbb{E}[f_*|X_*,X,y]
+=K(X_*,X)\,[K(X,X)+\sigma_n^2I]^{-1}y.
+\]
+Here $X$ and $y$ are the training predictors and targets, $X_*$
+is a test point, $K(\cdot,\cdot)$ is the kernel matrix and $\sigma_n^2$ is the
+noise variance. Lecture 5 presents the GP prediction as a posterior mean under
+a kernel. The prediction weights training outcomes through $K(X_*,X)$, so the
+kernel defines which historical months are allowed to influence the test
+forecast. This is a strong structure for the price target, where nearby price
+levels carry a lot of information. It is weaker for returns because similar
+predictors can be followed by very different next-month shocks.
 
-\probsub{2b}
+\narrcite{Arratia \textit{et al.}}{arratia_deep_wide_gp_2020} provide the
+methodological link used in this exercise. They show why neural networks and
+Gaussian processes are related model families in the wide-network limit, where
+random network weights imply a GP prior over functions. They also use monthly
+S\&P 500 prices and price lags in a regression example. The mechanism is kernel
+covariance: GP predictions weight observed training targets by similarity
+$K(X_*,X)$, while a finite neural network learns weights directly by
+optimisation. This supports comparing NN and GP forecasts in the same exercise.
+It does not prove that either model has a tradable one-month return signal.
 
-Table~\ref{tab:ex2_return} reports the test-set performance of the three models on the return target. Figure~\ref{fig:ex2_return} plots predictions against realised returns.
+\probsub{2a}{Feature Selection and Target Design}
+
+The L1 feature-selection step keeps \ExTwoReturnSelectedFeatures{} for returns.
+For price it keeps \ExTwoPriceSelectedFeatures. For direction it keeps
+\ExTwoDirectionSelectedFeatureCount{} variables. That deserves caution: a
+classifier with many weak predictors can fit small historical imbalances
+without learning a stable sign rule.
+The selected variables are inputs to the forecasting experiment, not a stable
+economic model of the equity premium. The held-out test block decides whether
+those inputs improve forecasts after the feature-selection step has already
+used the training data.
+
+The selected features are still informative about the statistical problem. For
+returns, book-to-market lags enter together with a lagged return, which is
+consistent with valuation carrying slow-moving information but not necessarily
+short-run timing power. For prices, \code{log\_price\_lag1} is selected, so the
+model is allowed to use the strongest possible state variable: yesterday's
+level. Direction keeps almost the whole lag block. That breadth is a warning
+sign rather than a success. If many weak variables are needed to classify a
+binary monthly sign, the boundary is likely fragile and should be evaluated by
+MCC rather than accuracy alone.
+Put differently, feature selection already tells us that the easy information
+is in the lagged target. The price model keeps yesterday's price because that
+is highly useful. The return model keeps only a small set because monthly
+returns contain much less stable signal. The direction model keeps many
+features. That is not automatically good. It may mean that the classifier
+is searching hard for a weak pattern.
+
+\probsub{2b}{Return Forecasts}
 
 \begin{table}[H]
 \centering
 \small
-\begin{tabular}{lllcccc}
+\begin{tabular}{llrrr}
 \toprule
 Model & Best configuration & RMSE & NRMSE & pcorrect \\
 \midrule
-NN            & 2 layers, $(128,64)$, ReLU       & 0.0526 & 0.0701 & 92.99 \\
-GP            & RBF + WhiteNoise                  & 0.0445 & 0.0592 & 94.08 \\
-LSTM          & 1 layer, 64 units, $T{=}6$        & 0.0472 & 0.0629 & 93.71 \\
-BaselineMean  & predict in-sample mean            & 0.0445 & 0.0593 & 94.07 \\
+\ExTwoReturnRows
 \bottomrule
 \end{tabular}
-\caption{Test-set forecast performance for the return target ($n=285$). The BaselineMean predicts the in-sample training mean of $\log r$; pcorrect $= 100(1-\mathrm{NRMSE})$.}
+\caption{Return-target test performance, scoring convention from the Python lab seen in class for Lecture 5 ($n=\ExTwoReturnTestN$). \textit{Notes:} RMSE is in monthly log-return units. NRMSE puts the same error on the course scale. pcorrect is built from NRMSE. It is not the probability of calling the sign correctly.}
 \label{tab:ex2_return}
 \end{table}
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.95\linewidth]{output/ex2_fig_return.pdf}
-\caption{Test-set predictions of next-month log return. The actual series (black) is volatile in the $\pm 10\%$ range; every model essentially flatlines near zero and is statistically indistinguishable from the in-sample mean baseline.}
+\includegraphics[width=0.95\linewidth]{output/ex2/07_ex2_fig_return.pdf}
+\caption{Test-set predictions of next-month log return.}
 \label{fig:ex2_return}
 \end{figure}
 
-The result is unambiguous: no model beats the in-sample mean baseline at any meaningful level of significance. The GP essentially ties the baseline (NRMSE 0.0592 vs 0.0593), the LSTM is about 0.4 percentage points of NRMSE worse and the NN is about 1.1 percentage points worse, with the deeper $(128,64)$ ReLU architecture chosen by the validation grid producing a noticeably noisier fit than the simpler GP. This is the textbook outcome for a near-martingale series: at monthly frequency the conditional mean of log returns given any subset of past observables and Goyal-Welch indicators is statistically indistinguishable from the unconditional mean, so the optimal MSE-minimising forecast is the unconditional mean, which is also what the naive baseline computes. The figure makes the same point visually: actual returns oscillate violently in the $\pm 10\%$ range while every model sits in a narrow band near zero, capturing essentially none of the dispersion. We read this as direct empirical support for the weak form of the efficient-markets hypothesis on the post-1986 sample (which is what the test split covers given the 60/15/25 chronological cut).
+The return task is the most direct financial forecasting problem because it
+asks for the next movement rather than the next level. The expectation from the
+Lecture 5 forecasting discussion and from the predictability literature is
+modest. If return signals are weak, a flexible model should not dominate a mean
+forecast by much.
 
-\probsub{2c}
+Table \ref{tab:ex2_return} matches that expectation. RMSE is in monthly
+log-return units, while NRMSE and pcorrect use the scaling from the Python lab
+seen in class for Lecture 5 described above. The GP has the best ML score. Its NRMSE,
+\ExTwoReturnGpNrmse, is almost identical to the mean baseline NRMSE,
+\ExTwoReturnBaselineMeanNrmse. Economically, this is the central result of
+Exercise 2b. The flexible models find patterns in the training and validation
+blocks, yet those patterns do not translate into a meaningful improvement over
+an unconditional expected return. \narrcite{Goyal and Welch}{goyal_welch_2008}
+report the same broad difficulty for standard equity-premium predictors.
 
-Table~\ref{tab:ex2_price} reports the test-set performance on the price target. Figure~\ref{fig:ex2_price} plots predictions against realised log prices.
+Figure \ref{fig:ex2_return} supports the table reading. The realised
+return series has sharp positive and negative moves, while the fitted lines are
+much smoother. The model is estimating a conditional mean, while the realised
+payoff is dominated by news shocks that were not in the predictor set. Adding a
+layer or changing the kernel would not reveal information that the lagged
+variables do not contain. These predictors, these lags and this chronological
+split do not provide a tradable one-month return forecast.
+This does not mean the models failed technically. It means the target is very
+hard. For monthly returns, the best forecast under squared-error loss is often
+close to the historical average. The GP being almost tied with the mean
+baseline is therefore not a dramatic win. It is also not surprising. The
+data are telling us that most of the next month's return is new information,
+not something already contained in dp, svar, bm or a few return lags.
+
+\probsub{2c}{Log-Price Forecasts}
 
 \begin{table}[H]
 \centering
 \small
-\begin{tabular}{lllcccc}
+\begin{tabular}{llrrr}
 \toprule
 Model & Best configuration & RMSE & NRMSE & pcorrect \\
 \midrule
-NN            & 1 layer, 64 units, ReLU            & 0.3272 & 0.0466 & 95.34 \\
-GP            & custom RBF + Linear + WhiteNoise   & 0.0795 & 0.0113 & 98.87 \\
-LSTM          & 1 layer, 64 units, $T{=}6$         & 1.2423 & 0.1770 & 82.30 \\
-BaselineMean  & predict in-sample mean             & 3.8198 & 0.5442 & 45.58 \\
+\ExTwoPriceRows
 \bottomrule
 \end{tabular}
-\caption{Test-set forecast performance for the price target, $\log P_{t+1}$ ($n=285$).}
+\caption{Log-price target test performance, scoring convention from the Python lab seen in class for Lecture 5 ($n=\ExTwoPriceTestN$). \textit{Notes:} The target is a log-price level. A strong score can therefore come from persistence in yesterday's price even when the implied return forecast adds little.}
 \label{tab:ex2_price}
 \end{table}
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.95\linewidth]{output/ex2_fig_price.pdf}
-\caption{Test-set predictions of next-month log price. NN and GP track the actual series tightly with a small upward bias; the LSTM produces a flat trajectory with a misplaced spike at the 2008 crisis; the in-sample-mean baseline is constant at the training-set average of $\log P$ and is therefore visually pinned at $\approx 3.6$, far below the test sample.}
+\includegraphics[width=0.95\linewidth]{output/ex2/09_ex2_fig_price.pdf}
+\caption{Test-set predictions of next-month log price.}
 \label{fig:ex2_price}
 \end{figure}
 
-For the price target the picture inverts. Every model crushes the mean baseline by a factor of 3 to 50 in NRMSE and the GP with the custom non-stationary additive kernel (RBF + Linear + WhiteNoise) is best by a clear margin (NRMSE 0.011 versus 0.047 for the NN and 0.177 for the LSTM). The dominant feature in this regression is log\_price\_lag1: predicting tomorrow's log price as approximately today's log price plus a small drift recovers most of the variance, because the price series is non-stationary and integrated of order one. The custom kernel captures this exactly: the linear (DotProduct) component handles the long-run drift while the RBF component captures local curvature around the trend. The LSTM, by contrast, struggles because its 6-step input window does not naturally encode the long-run level: it sees only the last six normalised observations and produces a flat extrapolation that even mis-times the 2008 crash with a downward spike (visible in Figure~\ref{fig:ex2_price}). We caution that the apparent 98.9\% pcorrect for the GP is mostly a tautology: forecasting log price one step ahead is essentially a random-walk-with-drift problem and any model that sees the lagged log price will inherit nearly all of the explanatory power from the autoregressive root. The interesting question is not which model fits log price best but whether any of them can extract additional predictive information from the GW indicators beyond the lagged price. The answer here is: a little, but not a lot.
+The price target is easier on the plot because $\log P_t$ is highly
+persistent. A good price forecast can be obtained by staying close to the last
+observed level, even if the model has little information about the next return.
 
-\probsub{2d}
+Table \ref{tab:ex2_price} answers a different question from the return table.
+The GP has the best Exercise 2 NRMSE at \ExTwoPriceGpNrmse{} and
+\ExTwoPriceGpPcorrect\% pcorrect. That is a strong statistical fit. It is
+not evidence of a strong equity-premium signal. The selected lagged price
+feature gives the model direct access to the level. The custom RBF plus
+linear kernel is well suited to extrapolating a smooth, persistent state. The
+LSTM is weaker because the sequence window and training objective do not give
+it the same simple level-following mechanism.
 
-Table~\ref{tab:ex2_direction} reports the test-set performance on the direction target. Figure~\ref{fig:ex2_direction} plots predictions against realised directions.
+Figure \ref{fig:ex2_price} illustrates the distinction. The forecasts track the
+level of the index far better than the return forecasts track monthly
+innovations. For a risk or asset-allocation question, however, a precise
+forecast of $\log P_{t+1}$ changes a decision only if it also improves the
+implied return forecast. The price figure shows level persistence and kernel
+smoothing, not evidence that the model has found exploitable expected returns.
+Put simply, predicting the log price is close to saying: tomorrow's level
+will look a lot like today's level. That is usually a good statement for a
+stock index. It creates a high table score. It is a weaker finance result
+than it appears. Investors care about the change from today to tomorrow, not
+only about the level tomorrow.
+As a simple example, if the index is at level $P_t$ today, a model that
+forecasts a level close to $P_t$ next month will often have a small price
+error. But the investment question is whether $P_{t+1}$ is meaningfully above
+or below $P_t$. The price score can be good even when the return forecast is
+not useful.
+
+\probsub{2d}{Direction Forecasts}
 
 \begin{table}[H]
 \centering
 \small
-\begin{tabular}{llcc}
+\begin{tabular}{llrr}
 \toprule
 Model & Best configuration & accuracy & MCC \\
 \midrule
-NN                 & 1 layer, 128 units, tanh        & 0.6070 & $-0.0571$ \\
-GP                 & RatQuad + WhiteNoise            & 0.6246 & $\phantom{-}0.0000$ \\
-LSTM               & 2 layers, 32 units, $T{=}6$     & 0.6000 & $-0.0423$ \\
-BaselineMajority   & predict the in-sample majority  & 0.6246 & $\phantom{-}0.0000$ \\
+\ExTwoDirectionRows
 \bottomrule
 \end{tabular}
-\caption{Test-set forecast performance for the direction target ($n=285$, test period 1998-03 to 2021-11). The 0.6246 accuracy of the BaselineMajority equals the unconditional up-rate over the test set; the GP also degenerates to the majority class, while the NN and the LSTM produce non-trivial but slightly worse-than-random predictions (negative MCC). The direction column is constructed inside the design step from $\mathbf{1}\{r_{t+1} > 0\}$ on the restricted panel, so the t+1 alignment never reaches outside the assignment's 1927-2021 window.}
+\caption{Direction-target test performance ($n=\ExTwoDirectionTestN$). \textit{Notes:} Accuracy can look respectable when up months are common. MCC adds the missing balance check by asking whether the model separates up months from down months.}
 \label{tab:ex2_direction}
 \end{table}
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.95\linewidth]{output/ex2_fig_direction.pdf}
-\caption{Test-set predictions of next-month direction. The GP and BaselineMajority predict $\hat d \equiv 1$; the NN and LSTM toggle to 0 on a small fraction of the test months (visible as occasional downward spikes in the orange and blue dashed lines), but the resulting class assignments produce a slightly negative Matthews correlation.}
+\includegraphics[width=0.95\linewidth]{output/ex2/11_ex2_fig_direction.pdf}
+\caption{Test-set predictions of next-month direction.}
 \label{fig:ex2_direction}
 \end{figure}
 
-The direction target tells a more nuanced story than the return target. The GP and the BaselineMajority both degenerate to the constant prediction $\hat d_{t+1} \equiv 1$ and therefore land at the unconditional up-rate accuracy of 62.5\% with Matthews correlation exactly zero. The NN and the LSTM, by contrast, do flip a non-zero number of class assignments: the NN sits at 60.7\% accuracy with MCC $-0.057$ and the LSTM at 60.0\% with MCC $-0.042$. Both negative MCCs mean these models are slightly worse than random on this test set, even though they are strictly less degenerate than the majority-class baseline. We read this as evidence that the L1 logistic with TimeSeriesSplit inner CV kept too many noisy features for the direction problem (it did not shrink any of the eleven candidates), so the NN and the LSTM picked up sample-specific patterns that do not generalise. The Matthews correlation is the diagnostic that distinguishes a model that genuinely uses the features (non-zero MCC) from a model that merely defaults to the majority class (zero MCC).
+Accuracy alone is misleading because the test set has many up months. A model
+can obtain a respectable accuracy simply by predicting ``up'' most of the time.
+Table \ref{tab:ex2_direction} shows the problem. The GP and the
+majority baseline both reach \ExTwoDirectionGpAccuracy{} accuracy with MCC
+equal to \ExTwoDirectionGpMcc, which means they are effectively
+majority-class forecasts. The NN and LSTM make non-constant decisions. Yet
+their MCCs, \ExTwoDirectionNnMcc{} and \ExTwoDirectionLstmMcc, are negative.
+They fail to beat the majority rule and make the wrong
+trade-off between false positives and false negatives.
 
-\probsub{2e}
+Figure \ref{fig:ex2_direction} displays the forecasts as discrete sign calls
+rather than regression errors. A direction model can look
+acceptable in a table if the market rises often enough. The figure shows
+whether the model is actually switching states. In this sample the switching
+does not correspond to a stable classification boundary. Accuracy answers how
+often the sign was right. MCC asks whether the classifier separates up months
+from down months in a balanced way. The latter is the more relevant diagnostic
+for a trading or allocation signal.
+This is why the direction result is weaker than the accuracy number suggests.
+The market is positive in many test months, so a lazy rule can look decent.
+MCC is stricter. It asks whether the model is useful on both sides of the
+problem: up months and down months. By that standard, the full-feature NN and
+LSTM do not give reliable sign forecasts. The GP mostly defaults to the
+majority class.
+For example, a model that always predicts ``up'' can score well if up months
+are common. It gives no help in identifying down months. This is why the
+GP can match the majority baseline in accuracy while having MCC equal to zero.
+The MCC value says the classifier is not really separating the two classes.
 
-For the sensitivity analysis we drop, in turn, all lags of dp, of svar and of bm from the candidate feature pool and we re-run the full feature-selection-and-fit pipeline. Table~\ref{tab:ex2_sensitivity} reports the test-set NRMSE and pcorrect for the regression targets and the test-set accuracy for the direction target. Differences from the main run isolate the marginal contribution of each indicator.
+\probsub{2e and 2f}{Sensitivity and Target Comparison}
+
+\input{output/ex2/05_ex2_sensitivity.tex}
+
+Table \ref{tab:ex2_sensitivity} is a small ablation study. It asks whether the
+forecast comes from the economic predictors themselves or from the
+autoregressive part of the design matrix. In finance terms, dp and bm are
+valuation ratios. They
+move slowly because dividends, book values and prices adjust at different
+speeds. svar is a risk-state variable. It reacts to market stress and should
+matter most when variance risk carries a premium. In ML terms, all three
+variables are weak, persistent and correlated with the lagged target. An
+ablation can improve performance by removing a coordinate that adds estimation
+variance faster than it adds stable signal, even when the removed variable has
+a sensible economic interpretation.
+
+The table mixes two scoring conventions, so the rows need careful reading.
+Return and price cells report NRMSE, a regression-error scale. Direction cells
+report accuracy, a sign-hit rate. In the return block, dropping any one of dp,
+svar or bm leaves the GP unchanged and improves the NN/LSTM slightly.
+That pattern says the exogenous predictors are not carrying robust short-run
+return information. They may still be economically meaningful at lower
+frequency. The one-month supervised forecast does not extract stable
+incremental signal from them.
+
+The return block gives the clearest warning against over-reading flexible models.
+Removing dp, svar or bm does not create a clear return-forecasting gain. The GP
+barely moves because the RBF kernel is effectively smoothing around a mean
+return in a low signal-to-noise problem. The NN and the LSTM often improve
+after a variable is removed, which is a variance effect rather than a finance
+discovery. A monthly equity return is mostly news. Once the conditional mean is
+small relative to the innovation variance, extra predictors can raise
+estimation error faster than they add signal. This is the standard bias-variance
+tradeoff in a financial setting: the model class is flexible enough to fit
+patterns, while the economic target does not provide enough stable conditional
+mean to make those patterns valuable out of sample.
+
+The price block behaves differently because the target is dominated by the
+state variable $\log P_t$. The GP reaches its best price NRMSE when
+\ExTwoSensitivityBestPriceGpDropped{} is removed, with NRMSE
+\ExTwoSensitivityBestPriceGpNrmse. This does not mean that book-to-market has
+no economic content. It means that, in this supervised task, the lagged price
+level already carries the low-frequency trend that the GP needs. Removing a
+slow valuation ratio can reduce collinearity in the kernel geometry. The model
+then compares test points mainly through the persistent price coordinate rather
+than through a crowded set of slow-moving predictors. Price forecasting looks
+impressive in the table because the model is learning level persistence much
+more than equity-premium predictability.
+
+The direction block needs extra care. The table reports accuracy there because
+NRMSE is not a classification metric. Accuracy near the majority
+baseline can come from calling most months positive, which is exactly why Table
+\ref{tab:ex2_direction} also reports MCC. The sensitivity rows show that
+dropping a predictor does not produce a stable classification rule. From a
+market perspective the horizon mismatch is the mechanism. A valuation signal
+can affect long-horizon expected returns and still be weak for one-month signs.
+From an
+ML perspective the classification boundary is trying to separate many small
+positive returns from many small negative returns using sluggish predictors.
+That is a hard problem because the label throws away magnitude information and
+keeps only the sign.
+The useful lesson from the sensitivity table is not that one variable is
+``bad'' in general. It is narrower. In this particular one-month forecasting
+exercise, removing some assigned predictors often makes the model simpler and
+slightly more stable. That supports the main interpretation: the Goyal-Welch
+variables may contain slow economic information. They do not deliver a
+clean short-run forecasting edge here.
+
+The target comparison is not a ranking by headline fit. Price is easiest to fit
+because it has a near-unit-root level. Return is the economically direct target
+because it asks for the new payoff.
+Direction is appealing for trading language, although it is statistically
+fragile under class imbalance. The practical conclusion is that model
+flexibility helps when the target contains a strong state variable. It is far
+less reliable when the target is the conditional mean of monthly returns.
+So the answer to ``which target works best?'' has two parts. If we only look at
+table fit, the price target wins. If we ask the harder finance question,
+returns and directions matter more. Those results are weak. This distinction
+keeps the conclusion honest: the models can fit a persistent price level, but
+they do not uncover a strong one-month equity-return signal.
+
+\probsection{3}{ARMA-GARCH Benchmarks}
+
+The weak return results in Exercise 2 make a classical benchmark necessary.
+Exercise 3 compares the ML models with ARMA-GARCH baselines on the same test
+block. The Lecture 3 time-series decomposition separates a series
+into a deterministic component, a predictable conditional mean and an
+innovation:
+\[
+X_t=D_t+Y_t,\qquad
+Y_t=\mathbb{E}(Y_t|\mathcal{F}_{t-1})+a_t,
+\qquad
+\sigma_t^2=\operatorname{Var}(Y_t|\mathcal{F}_{t-1})
+          =\mathbb{E}(a_t^2|\mathcal{F}_{t-1}).
+\]
+Here $D_t$ is the deterministic part, $Y_t$ is the stochastic component,
+$\mathcal{F}_{t-1}$ is the information set
+available before date $t$, $a_t$ is the unexpected innovation and
+$\sigma_t^2$ is the conditional variance. The decomposition says that a time
+series model has two jobs: forecast the conditional mean and describe the
+remaining conditional risk. In finance those two jobs feed different
+decisions: the mean forecast drives expected payoff, while the variance
+forecast drives capital, margin and drawdown control. A model can fail on the
+mean and still improve the risk estimate.
+For log returns, the Lecture 3 ARMA model is
+\[
+r_t=\phi_1r_{t-1}+\cdots+\phi_pr_{t-p}
+    +a_t+\theta_1a_{t-1}+\cdots+\theta_qa_{t-q}.
+\]
+The $\phi$ terms use lagged returns, while the $\theta$ terms
+use lagged forecast errors. If return predictability is weak, this mean
+equation should not beat the best ML model by a large economic margin. The
+Lecture 3 GARCH model describes the innovation variance:
+\[
+a_t=\sigma_t\varepsilon_t,\qquad
+\sigma_t^2=\omega+\sum_{i=1}^{p}\alpha_i a_{t-i}^2
+              +\sum_{j=1}^{q}\beta_j\sigma_{t-j}^2,
+\qquad \varepsilon_t\sim N(0,1).
+\]
+In this equation, $\omega$ is the long-run variance
+intercept, the $\alpha_i$ terms measure how strongly recent squared shocks move
+volatility and the $\beta_j$ terms measure how much past volatility carries
+forward. The sum of the fitted $\alpha$ and $\beta$ terms is the persistence
+diagnostic because it measures how much of a variance shock remains in the next
+period's variance recursion. Values near one mean that volatility shocks fade
+slowly. This gives a concrete expectation before Table
+\ref{tab:ex3_combined}. The ARMA part should be close to the ML models on
+returns, while the GARCH part should capture the persistence that also appeared
+in the EWMA volatility networks.
+
+\probsub{3a}{Model Orders and Volatility Persistence}
+
+Both ARMA-GARCH variants use the same monthly log-return series as Exercise 2.
+The fit block combines the training and validation periods. The test block runs
+from \ExThreeTestStart{} to \ExThreeTestEnd{} and contains \ExThreeTestN{}
+observations. ARMA order is selected by AIC over
+$p,q\in\{0,\ldots,\ExThreeMaxArmaOrder\}$ with
+\code{pmdarima.auto\_arima}. We set no seasonal component because the target is
+a monthly equity return. We use no differencing because log returns are already
+the stationary object in the Lecture 3 setup. The
+GARCH(\ExThreeGarchP,\ExThreeGarchQ) layer is fitted on the ARMA residuals, so
+the mean equation and the volatility equation each receive the part of the
+series they are designed to model.
+
+For the Yeo-Johnson variant, the transformation is estimated only on the
+combined training and validation block. The ARMA-GARCH model is fitted on the
+transformed returns, forecasts are inverse-transformed and all scoring is done
+back in original return units. Yeo-Johnson is used because returns can be
+negative. Box-Cox would require strictly positive inputs. A shift could make
+returns positive. That shift would change the scale and make the transformed
+likelihood less tied to the original financial object.
+
+One-step test forecasts use fixed parameters and expanding information. The
+implementation extends the fitted ARMA model through the test path using the
+\code{apply} method with \code{refit=False}, then reads the fitted one-step
+values for the test block. The model is not re-estimated at every test date. It
+uses realised past test returns to update the ARMA state. It does not use
+future returns to estimate parameters. The GARCH equation supplies the
+conditional-variance path and the persistence diagnostic. The point forecasts
+for return, price and direction come from the ARMA conditional mean, with
+$\widehat p_{t+1}=p_t+\widehat r_{t+1}$ and direction obtained by thresholding
+$\widehat r_{t+1}$ at zero.
+
+The raw-return baseline selects ARMA(\ExThreeArmaPlainP,\ExThreeArmaPlainQ)
+with AIC \ExThreeArmaPlainAic{} and GARCH persistence
+\ExThreeArmaPlainPersistence. The Yeo-Johnson variant selects
+ARMA(\ExThreeArmaYeoJohnsonP,\ExThreeArmaYeoJohnsonQ) with transformed-scale
+AIC \ExThreeArmaYeoJohnsonAic{} and persistence
+\ExThreeArmaYeoJohnsonPersistence. The two AIC values should not be compared
+directly because the likelihoods are evaluated on different return scales. The
+model-order comparison is still informative: the transformation lets the
+conditional-mean equation use fewer ARMA terms, which reduces the number of
+serial-correlation patterns it can chase in sample. Persistence close to one is
+common in equity volatility. The plain model estimates
+$\alpha+\beta=\ExThreeArmaPlainPersistence$ and the transformed model estimates
+$\alpha+\beta=\ExThreeArmaYeoJohnsonPersistence$. Both are near the integrated
+boundary. Financially, that means the variance forecast responds to a shock and
+then releases it slowly across later months. From an ML benchmarking view, this
+is a low-dimensional model with a strong inductive bias: it does not try to
+learn a broad nonlinear mean function. It concentrates capacity on volatility
+persistence, which is the part of the data that was visibly stable in Exercise
+1.
+Numerically, the plain persistence value
+\ExThreeArmaPlainPersistence{} means that almost all of a volatility shock is
+carried into the next monthly variance estimate. A bad month does more than
+affect that month. It also raises the risk forecast for the following months,
+then fades slowly.
+The AIC result also helps explain why the transformed version is attractive.
+The raw returns need
+ARMA(\ExThreeArmaPlainP,\ExThreeArmaPlainQ), while the transformed series only
+needs ARMA(\ExThreeArmaYeoJohnsonP,\ExThreeArmaYeoJohnsonQ). In simple words,
+Yeo-Johnson makes the mean model cleaner. It does not create a large return
+signal. It reduces the chance that the ARMA part is fitting small, noisy
+wiggles in the training sample.
+
+\probsub{3b}{ML Versus ARMA-GARCH}
 
 \begin{table}[H]
 \centering
-\small
-\begin{tabular}{llccc}
+\scriptsize
+\begin{tabular}{llrrrrr}
 \toprule
-Target & Dropped & NN (NRMSE) & GP (NRMSE) & LSTM (NRMSE) \\
+Target & Model & RMSE & NRMSE & pcorrect & accuracy & MCC \\
 \midrule
-return & --   & 0.0701 & 0.0592 & 0.0629 \\
-return & dp   & 0.0615 & 0.0592 & 0.0601 \\
-return & svar & 0.0615 & 0.0592 & 0.0601 \\
-return & bm   & 0.0658 & 0.0592 & 0.0599 \\
-\midrule
-price  & --   & 0.0466 & 0.0113 & 0.1770 \\
-price  & dp   & 0.0214 & 0.0135 & 0.1474 \\
-price  & svar & 0.0378 & 0.0075 & 0.1357 \\
-price  & bm   & 0.0321 & 0.0067 & 0.1475 \\
-\midrule
-\multicolumn{5}{l}{(direction is reported as accuracy)} \\
-direction & --   & 0.6070 & 0.6246 & 0.6000 \\
-direction & dp   & 0.6246 & 0.6246 & 0.6246 \\
-direction & svar & 0.6035 & 0.6246 & 0.6246 \\
-direction & bm   & 0.6211 & 0.6246 & 0.6175 \\
+\ExThreeCombinedRows
 \bottomrule
 \end{tabular}
-\caption{Sensitivity analysis: each row is the test-set performance when all lags of the indicated variable are removed from the candidate feature pool before Lasso selection. NRMSE is reported for return and price, accuracy for direction. Note that the GP keeps the same single best kernel across most ablations because its hyperparameters are re-optimised on the smaller feature subset.}
-\label{tab:ex2_sensitivity}
-\end{table}
-
-The structure of the table mirrors what Lasso already told us, with several interesting reversals. For the return target the NN actually improves when dp or svar is dropped (NRMSE falls from 0.070 in the main run to 0.062), reflecting the fact that the L1 selector picks a slightly different feature subset (and a different best NN architecture) once the candidate pool is restricted and that smaller subset turns out to generalise better. The GP is invariant across all return ablations because its preferred RBF + WhiteNoise solution effectively absorbs uninformative features into the noise term. For the price target the GP shows the same pattern as before: dropping svar or bm actually improves the fit (NRMSE 0.011 in the main run, 0.0075 after dropping svar, 0.0067 after dropping bm), which we read as a mild form of feature-induced overfitting on noisy regressors. The NN improves further when dp is dropped (NRMSE 0.021, the best of any (model, ablation) combination on the price target), then degrades when svar or bm is dropped, suggesting that dp is the indicator the NN was actively misusing. For direction, the most striking finding is that dropping any of the three indicators removes the negative-MCC pathology of the NN and LSTM: with dp dropped, all three models match the majority-class baseline at 0.625 accuracy and zero MCC; with svar dropped, the LSTM joins the majority class while the NN still slightly underperforms; with bm dropped the NN, GP and LSTM all produce small but positive MCCs (0.026, 0.022, 0.056 respectively). The implication is that, on this test sample, the indicators we were assigned introduce more noise than signal for direction prediction: removing them either eliminates the spurious patterns or, in the bm-dropped case, leaves a small genuine residual signal in the autoregressive lags.
-
-\probsub{2f}
-
-The narrative answer to "for which target works best?" is more interesting than the headline NRMSE numbers suggest. By NRMSE alone, the price target wins overwhelmingly: every model crushes the mean baseline by an order of magnitude or more and the GP reaches 98.9\% pcorrect. But that performance is driven almost entirely by the lagged log-price feature acting as an autoregressive root in a near random-walk; it tells us nothing useful about whether the Goyal-Welch indicators help us forecast equity dynamics. The honest comparison is between the return and direction targets and there the lesson is the same: at monthly frequency on this 95-year sample, no model can beat the unconditional mean for log returns and no model produces a directional classifier with a positive MCC on the full feature set. We conclude that "works best" should be read in two senses. The price target works best in the trivial sense that any model exploiting the autoregressive root will look impressive; but the return target is the most honest forecasting problem and the answer there is that the GP with an RBF kernel is a tied first-place finisher with the constant-mean predictor. For the direction target, the most useful finding from this exercise is the sensitivity result: the (NN, GP, LSTM) trio only produces positive MCCs once book-to-market is removed from the candidate features, suggesting that on this test sample the assigned indicators introduce more noise than signal for the binary classification problem. This is consistent with Goyal and Welch (2008), who report similar negative out-of-sample results for the same indicators when judged against a recursive mean benchmark.
-
-% =============================================================================
-% Exercise 3
-% =============================================================================
-\probsection{3}
-
-We are asked to compare the Exercise 2 ML models against a classical ARMA(p,q) + GARCH(1,1) baseline together with a normalising transformation of variables. We fit two variants of the baseline on the same data, with the same chronological 60/15/25 split as Exercise 2, so the test sets coincide exactly: a plain ARMA-GARCH on the raw log-return series and a Yeo-Johnson-normalised ARMA-GARCH where the predictions are inverse-transformed back to the original return scale before scoring. The full pipeline is in \texttt{exercise\_03.py}; the artefacts live in \texttt{output/ex3\_*}.
-
-\probsub{3a}
-
-We work with the same monthly log-return series as Exercise 2 and we fit both ARMA-GARCH variants on the combined train$+$validation block (852 observations, 1927-03 to 1998-02), then score one-step-ahead forecasts on the 285-observation test block (1998-03 to 2021-11). The ARMA order is selected by AIC over $p, q \in \{0, \dots, 5\}$ via \texttt{pmdarima.auto\_arima} (stepwise search, no differencing since returns are already stationary, no seasonal component for monthly equity returns). After the ARMA fit we layer a GARCH(1,1) on the residuals via the \texttt{arch} library:
-\[
-r_t \;=\; \mu_t \;+\; a_t,\qquad
-\mu_t \;=\; \phi_1 r_{t-1} + \dots + \phi_p r_{t-p} + \theta_1 a_{t-1} + \dots + \theta_q a_{t-q},
-\]
-\[
-a_t \;=\; \sigma_t \varepsilon_t,\qquad
-\sigma_t^2 \;=\; \omega + \alpha_1 a_{t-1}^2 + \beta_1 \sigma_{t-1}^2,\qquad \varepsilon_t \sim \mathcal{N}(0, 1).
-\]
-For the Yeo-Johnson variant we fit the transformer on the same train$+$validation fitting block used for the ARMA estimator (the test set is never touched), apply ARMA-GARCH to the transformed series and inverse-transform the predicted returns back to the original scale. Yeo-Johnson is the natural drop-in replacement for the lecture's \texttt{bestNormalize} workflow when the data are real-valued and can include negatives, since unlike Box-Cox it accepts negative inputs. The Box-Cox, logit and rank-based transformations from Lab~1 are also invertible, but Box-Cox needs strictly positive inputs (returns can be negative) and the logit needs bounded inputs in $(0,1)$, so Yeo-Johnson is the right pick for a return series.
-
-One-step-ahead test forecasts are produced by extending the fitted ARMA model with the test endogenous data via \texttt{ARIMA.apply(refit=False)}, then taking the in-sample fitted values for the test block. This is the standard "static parameters, expanding history" procedure, which gives genuine one-step-ahead forecasts conditional on the realised path without re-estimating parameters at every step. Each forecast at time $t+1$ uses only data observed at or before time $t$, so there is no multi-step compounding and no test-set leakage; the parameters are estimated once on the train$+$validation block and held fixed across the test period. Point forecasts come exclusively from the ARMA mean component; the GARCH(1,1) supplies a conditional-variance path that we use to verify the existence of an ARCH effect and to quote the GARCH persistence $\alpha_1 + \beta_1$. For the price target we set $\widehat{p}_{t+1} = p_t + \widehat{r}_{t+1}$, that is, we add the predicted log return to the realised lagged log price. For the direction target we threshold the predicted return at zero.
-
-The two variants pick rather different orders. The plain ARMA-GARCH chooses ARMA(2,2) on the raw returns (AIC $-2482.78$), with GARCH(1,1) parameters $\alpha_1 = 0.113$, $\beta_1 = 0.871$ and persistence $\alpha_1 + \beta_1 = 0.984$. The Yeo-Johnson variant picks the simpler ARMA(0,1) on the transformed returns (AIC of the transformed-scale objective is not directly comparable with the raw-scale AIC), with GARCH(1,1) parameters $\alpha_1 = 0.121$, $\beta_1 = 0.860$ and persistence $0.982$. The almost-unit GARCH persistence in both variants is a well-known stylised fact for monthly equity returns and it confirms that there is a strong ARCH effect even though the conditional mean is essentially unpredictable.
-
-\probsub{3b}
-
-Table~\ref{tab:ex3_combined} reports the head-to-head comparison of the four Exercise 2 models (three ML models and the relevant naive baseline) against the two ARMA-GARCH variants on the same chronological test split, for each of the three target specifications. Figures~\ref{fig:ex3_return}, \ref{fig:ex3_price} and \ref{fig:ex3_direction} plot the ARMA-GARCH predictions against the realised series.
-
-\begin{table}[H]
-\centering
-\small
-\begin{tabular}{llcccc}
-\toprule
-Target & Model & RMSE & NRMSE & accuracy & MCC \\
-\midrule
-return & NN                       & 0.0526 & 0.0701 &        &        \\
-return & GP (RBF)                 & 0.0445 & 0.0592 &        &        \\
-return & LSTM                     & 0.0472 & 0.0629 &        &        \\
-return & BaselineMean             & 0.0445 & 0.0593 &        &        \\
-return & ARMA-GARCH (plain)       & 0.0451 & 0.0601 &        &        \\
-return & ARMA-GARCH (YeoJohnson)  & 0.0444 & 0.0591 &        &        \\
-\midrule
-price  & NN                       & 0.3272 & 0.0466 &        &        \\
-price  & GP (RBF+Lin)             & 0.0795 & 0.0113 &        &        \\
-price  & LSTM                     & 1.2423 & 0.1770 &        &        \\
-price  & BaselineMean             & 3.8198 & 0.5442 &        &        \\
-price  & ARMA-GARCH (plain)       & 0.0451 & 0.0064 &        &        \\
-price  & ARMA-GARCH (YeoJohnson)  & 0.0444 & 0.0063 &        &        \\
-\midrule
-direction & NN                      &        &        & 0.6070 & $-0.0571$ \\
-direction & GP (RatQuad)            &        &        & 0.6246 & $\phantom{-}0.0000$ \\
-direction & LSTM                    &        &        & 0.6000 & $-0.0423$ \\
-direction & BaselineMajority        &        &        & 0.6246 & $\phantom{-}0.0000$ \\
-direction & ARMA-GARCH (plain)      &        &        & 0.6000 & $\phantom{-}0.0759$ \\
-direction & ARMA-GARCH (YeoJohnson) &        &        & 0.6246 & $\phantom{-}0.0627$ \\
-\bottomrule
-\end{tabular}
-\caption{Head-to-head comparison: Exercise 2 ML models versus Exercise 3 ARMA-GARCH baselines on the same chronological test split ($n=285$ across all targets, with the test period running 1998-03 to 2021-11).}
+\caption{Exercise 2 and Exercise 3 comparison on the same test block ($n=\ExThreeTestN$). \textit{Notes:} Return and price rows use regression errors. Direction rows use sign classification measures. Blank cells keep those two scoring problems separate while preserving the same chronological test block.}
 \label{tab:ex3_combined}
 \end{table}
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.95\linewidth]{output/ex3_fig_return.pdf}
-\caption{Test-set return predictions: both ARMA-GARCH variants flatline near zero with small autoregressive ripples (the plain ARMA(2,2) shows slightly more variation than the Yeo-Johnson MA(1)). Compare with Figure~\ref{fig:ex2_return}.}
+\includegraphics[width=0.95\linewidth]{output/ex3/07_ex3_fig_return.pdf}
+\caption{ARMA-GARCH return forecasts.}
 \label{fig:ex3_return}
 \end{figure}
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.95\linewidth]{output/ex3_fig_price.pdf}
-\caption{Test-set log-price predictions: both ARMA-GARCH variants are visually indistinguishable from the actual series, because the predicted log price is the realised lagged log price plus a small predicted return.}
+\includegraphics[width=0.95\linewidth]{output/ex3/09_ex3_fig_price.pdf}
+\caption{ARMA-GARCH log-price forecasts.}
 \label{fig:ex3_price}
 \end{figure}
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.95\linewidth]{output/ex3_fig_direction.pdf}
-\caption{Test-set direction predictions: unlike the Exercise 2 GP and BaselineMajority (which collapsed to the majority class) and the Exercise 2 NN and LSTM (which produced non-trivial but negative-MCC predictions), both ARMA-GARCH variants make non-trivial 0/1 predictions and produce positive Matthews correlations.}
+\includegraphics[width=0.95\linewidth]{output/ex3/11_ex3_fig_direction.pdf}
+\caption{ARMA-GARCH direction forecasts.}
 \label{fig:ex3_direction}
 \end{figure}
 
-The picture is striking and runs against the standard "ML beats classical statistics" prior. On the return target, the ARMA-GARCH (Yeo-Johnson) variant is the single best model in the entire comparison (NRMSE 0.0591, marginally below the BaselineMean of 0.0593 and the GP of 0.0592), the plain ARMA-GARCH is essentially tied with the LSTM (0.0601 versus 0.0629) and both ARMA-GARCH variants beat the multilayer perceptron (NRMSE 0.0701). On the price target, both ARMA-GARCH variants decisively beat every Exercise 2 model: the GP of Exercise 2 (which was already 4 times better than the NN and 16 times better than the LSTM in RMSE terms) is itself outperformed by a factor of roughly 1.8 in RMSE by the simpler ARMA-GARCH baseline. The reason is that the ARMA-GARCH price forecast is mechanically the realised lagged log price plus a small predicted log return, which is the optimal random-walk-with-drift forecast for an integrated series; the GP's smooth posterior introduces small additive distortions that the rigid AR-plus-drift structure does not. On the direction target the contrast remains in favour of ARMA-GARCH: the Exercise 2 GP and BaselineMajority degenerate to "always up" with MCC exactly zero, the Exercise 2 NN and LSTM make non-trivial but slightly worse-than-random predictions (negative MCC), whereas both ARMA-GARCH variants produce small but positive MCCs (0.076 for plain, 0.063 for Yeo-Johnson). The ARMA-GARCH (YeoJohnson) exactly matches the majority-baseline accuracy (0.625) while flipping a non-zero number of class assignments, which is the diagnostic for a "useful" classifier rather than a "trivial" one.
+Table \ref{tab:ex3_combined} is a joint diagnostic table rather than one
+single leaderboard. The return and price blocks report RMSE, NRMSE and
+pcorrect. The direction block reports accuracy and MCC because the target is a
+binary sign. The empty cells are intentional. They prevent a regression metric
+from being compared with a classification metric.
 
-The Yeo-Johnson normalisation has a small but consistent positive effect across all three targets. We read this as confirmation that the lecture's emphasis on normalising transformations is justified: even on a series that is already approximately log-normal (log returns), making the marginal distribution closer to Gaussian helps the maximum-likelihood ARMA estimator land on a more parsimonious model (MA(1) versus ARMA(2,2)) and produces marginally better forecasts in every metric. The simpler model is also less prone to capturing spurious autocorrelation in small samples, which matters most for the direction target where the gap between predictability and noise is narrowest. Box-Cox would be the natural alternative for strictly positive series like svar or the price level itself; on the return series it is unavailable because returns can be (and frequently are) negative.
+On returns, Yeo-Johnson ARMA-GARCH has NRMSE
+\ExThreeReturnArmaYeoJohnsonNrmse, while the Exercise 2 GP has NRMSE
+\ExTwoReturnGpNrmse. The difference is economically tiny. It is a practical tie
+because the improvement is small relative to the scale of
+monthly return shocks. The plain ARMA-GARCH result,
+\ExThreeReturnArmaPlainNrmse, also sits very close to the mean benchmark.
+One-month expected returns are difficult to forecast with either flexible ML
+models or classical conditional-mean models. Extra functional flexibility does
+not help much when the target has a low signal-to-noise ratio and the stable
+component is close to an unconditional mean.
 
-The headline lesson of this comparison is that the assignment's framing of ARMA-GARCH as a "baseline" is misleading: on this specific dataset and this specific test period, the ARMA-GARCH baseline actually wins on every target where there is anything to win at all and ties on the one target (return) where nothing wins. The deep models (NN, LSTM, GP) bring no extra predictive value at monthly frequency on the Goyal-Welch indicator set and at least one of them (LSTM on price) is materially worse than the simplest possible random-walk forecast. This is the standard out-of-sample equity-premium-puzzle picture and it underscores the point that classical time-series models, properly fit, are very hard to beat when the underlying signal is weak.
+Figure \ref{fig:ex3_return} is the visual check behind that conclusion. The
+forecast path is smoother than the realised return path. Large realised moves
+remain mostly innovations. This is the right picture for a model that captures
+a modest conditional mean but cannot anticipate the news shock itself. A
+profitable trading interpretation would require the forecast to survive rolling
+re-estimation, transaction costs, forecast intervals and portfolio evaluation.
+None of those tests is part of this homework output.
+The important point is that the classical model is not winning because returns
+are easy. It is competitive because it is small and tightly specified. When signal
+is weak, a small model that avoids overfitting can match or beat a flexible
+model.
 
-% =============================================================================
-% Exercise 4
-% =============================================================================
-\probsection{4}
+The price block looks stronger. ARMA-GARCH reaches price NRMSE
+\ExThreePriceArmaYeoJohnsonNrmse{} in the transformed specification, compared
+with \ExTwoPriceGpNrmse{} for the Exercise 2 GP. Figure \ref{fig:ex3_price}
+shows why. A price forecast is built as
+$\widehat p_{t+1}=p_t+\widehat r_{t+1}$, so the model inherits the observed
+level before adding a return forecast. That construction tracks the index
+level because most of tomorrow's log price is already today's log price. It
+should not be mistaken for a high Sharpe-ratio return signal. The same
+dependence on yesterday's price level made the GP look strong in Exercise 2.
 
-We are asked to summarise the main lessons learnt from Lectures 1 to 5, with two or three keypoints per lecture. We organise this section by syllabus lecture number.
+The direction block is more informative when MCC is read beside accuracy.
+Yeo-Johnson ARMA-GARCH matches the majority baseline accuracy at
+\ExThreeDirectionArmaYeoJohnsonAccuracy, yet it reaches a positive MCC of
+\ExThreeDirectionArmaYeoJohnsonMcc. The plain ARMA-GARCH model has lower
+accuracy, \ExThreeDirectionArmaPlainAccuracy, with MCC
+\ExThreeDirectionArmaPlainMcc. That tells us the classical baselines make some
+balanced sign decisions, while the GP direction classifier mostly reproduces
+the majority class. Figure \ref{fig:ex3_direction} is not a trading rule by
+itself. It checks whether the model switches signs in a way that lines up with
+down months. The relation is positive, small and sample dependent.
 
-\probsub{4a}
+The result has a narrow scope. In this split, where the signal-to-noise ratio
+is low, a carefully specified classical baseline extracts about as much
+forecasting content as the more flexible ML models. A final limitation is that
+all comparisons use one chronological split. The conclusion is convincing for
+this homework sample. It should not be sold as a universal ranking of model
+families.
+This strengthens the main lesson rather than contradicting Exercise 2. The ML
+models were not beaten by a very rich benchmark. They were matched by a
+standard ARMA-GARCH model that is built for weak means and persistent
+volatility. In this sample, that structure is exactly what the data reward.
 
-The first lecture introduces the financial-markets vocabulary that the rest of the course relies on. Securities are classified as debt (bonds), equity (stocks) and derivatives (options, futures, forwards) and we distinguish risky instruments (stocks, options) from risk-free ones (government bonds). We learn the difference between payoff (the value of a security at maturity) and profit (the risk-adjusted payoff that discounts the initial investment) and that bond payoffs are computed by compounding interest, with the continuously compounded form $P_{\Delta t} = P_0 e^{r \Delta t}$ being the natural limit and the most convenient algebraically. The lecture also covers market indices (price-weighted versus capitalisation-weighted, with the Value-Line and IBEX-style formulas as canonical examples) and the conventional OHLC stock-quote table where Adjusted Close is the right column to use for return computations because it accounts for splits and dividends.
+\probsection{4}{Synthesis}
 
-\probsub{4b}
+The three exercises fit together as one empirical message. Lecture 2 gives the
+return and volatility notation used to build the asset networks. Lecture 3
+then separates conditional mean from conditional variance, which is exactly the
+distinction behind the ARMA-GARCH baseline. Lecture 4 turns lagged predictive
+content into a testable Granger restriction. Lecture 5 gives the recurrent,
+LSTM and GP formulas used for the nonlinear forecasting exercise. Read in that
+order, the results are coherent: first moments of equity returns remain weak
+and unstable, while second moments are persistent and more connected across
+assets.
 
-Lecture~2 is about descriptive statistics of financial time series. The first keypoint is the case for log returns over simple returns: log returns aggregate additively over multiple periods, $r_t[k] = r_t + r_{t-1} + \dots + r_{t-k+1}$, which makes them tractable for statistical models that assume Gaussianity, while simple returns aggregate multiplicatively. The second keypoint is the empirical distribution of returns: monthly equity returns are approximately bell-shaped with skewness near zero and a small mean, so a normal model is tempting, but Shapiro-Wilk, Jarque-Bera and D'Agostino skewness tests typically reject normality at daily and weekly frequencies because of fat tails and excess kurtosis; this motivates the family of invertible normalising transformations (Box-Cox, Yeo-Johnson, logit, hyperbolic-sine, rank-based) bundled in R's \texttt{bestNormalize} package and used in our Exercise~3. The third keypoint is volatility: it is the conditional standard deviation of returns and is not directly observable, so we estimate it from data using historical (close-to-close), range-based (Parkinson, Garman-Klass) or exponentially weighted moving average (EWMA, RiskMetrics convention $\lambda = 0.94$) methods. Annualisation always proceeds by multiplying by $\sqrt{h}$ where $h$ is the number of periods per year.
-
-\probsub{4c}
-
-Lecture~3 is about parametric and semi-parametric time-series models. The first keypoint is the general modelling paradigm: a series decomposes additively as $X_t = D_t + Y_t$ where $D_t = m_t + s_t$ is a deterministic trend-and-seasonality component (estimated and subtracted by classical Box-Jenkins methods) and $Y_t$ is the stationary stochastic component we model with $Y_t = \mathbb{E}[Y_t | \mathcal{F}_{t-1}] + a_t$, a conditional-mean term plus an innovation. The second keypoint is the linear ARMA(p,q) and ARIMA(p,d,q) family: when the series is stationary we fit ARMA directly; when a Dickey-Fuller test rejects stationarity we difference $d$ times and fit ARMA on the differenced series. The third keypoint is the nonlinear ARCH/GARCH family for the conditional variance: ARCH$(p)$ of Engle (1982) makes $\sigma_t^2$ a linear function of past squared innovations and GARCH$(p,q)$ of Bollerslev (1986) extends this with lagged variances, $\sigma_t^2 = \omega + \sum_{i=1}^p \alpha_i a_{t-i}^2 + \sum_{j=1}^q \beta_j \sigma_{t-j}^2$, with the persistence $\sum (\alpha_i + \beta_j) < 1$ for stationarity; in Exercise~3 we measured persistence of $0.984$ for the plain ARMA-GARCH on monthly SP500 returns, which is the standard near-unit value for equity volatility. The lecture also introduces neural networks (feedforward, single and deep), backpropagation by gradient descent and the universal approximation theorem (Hornik et al. 1989), framing the NRMSE as the lab's preferred forecast metric and the 75/25 chronological split as the standard out-of-sample protocol.
-
-\probsub{4d}
-
-Lecture~4 is about model adequacy via causality and bootstrap. The first keypoint is the formal definition of Granger causality (Granger 1969): $X$ is said to Granger-cause $Y$ if $Y$ is better predicted using the histories of both $X$ and $Y$ than using the history of $Y$ alone, with the test implemented as an $F$-test comparing the residual sums of squares of the unrestricted ($M_f$) and restricted ($M_r$) regressions; significance at the 5\% level is the conventional cutoff. The second keypoint is the multivariate generalisation through VAR with lag selection by AIC, HQ or analogous information criteria (\texttt{VARselect} in R, \texttt{statsmodels.VAR.select\_order} in Python) and the practical advice to discard apparent feedback loops, to repeat the analysis on different sampling periods to detect structural breaks and to be aware that Granger's test assumes a linear relationship (extensions to nonlinear and conditional causality exist via kernel and information-theoretic methods). The third keypoint is the bootstrap (Efron 1979) for assessing estimator quality: we sample $m$ datasets with replacement from the empirical CDF $\widehat F_n$, compute the statistic $\hat\theta_n^*$ on each resample and use the resulting distribution as a Monte-Carlo approximation to the unknown sampling distribution. The expected proportion of distinct observations in a bootstrap sample is $1 - 1/e \approx 0.632$ and the procedure fails for non-iid data such as time series, where modifications like the block bootstrap or the stationary bootstrap (Politis-Romano) are required.
-
-\probsub{4e}
-
-Lecture~5 is about machine-learning models II: recurrent neural networks, LSTMs and Gaussian processes. The first keypoint is the recurrent architecture: the hidden state $h_t = \sigma(W_h h_{t-1} + W_x x_t + b)$ propagates information forward in time and is trained by Backpropagation Through Time (BPTT), which unrolls the network across the input sequence and applies the chain rule layer by layer; vanilla RNNs suffer from vanishing and exploding gradients that prevent them from capturing dependencies of length much greater than ten. The second keypoint is the LSTM (Hochreiter-Schmidhuber 1997), which solves the vanishing-gradient problem with a gating mechanism (forget, input, output gates) around an internal cell state $C_t = f_t \odot C_{t-1} + i_t \odot \tilde C_t$; LSTMs are the standard architecture for moderately long time-series dependencies, with GRUs as a simpler variant and Transformers (Vaswani et al. 2017) as the modern attention-based alternative for very long sequences. The third keypoint is the Gaussian-process regression formulation: a GP is a distribution over functions parameterised by a mean function (often taken as zero) and a kernel $k(x, x')$; the posterior mean for prediction at a test input $x_*$ is $\bar f_* = K(x_*, X)[K(X, X) + \sigma_n^2 I]^{-1} y$ and the choice of kernel (RBF, Matern, polynomial, rational-quadratic, custom additive) encodes our prior assumptions about smoothness, length-scale and the additive structure of the function. We saw in Exercise~2 that a custom non-stationary RBF$+$Linear$+$WhiteNoise kernel was the best price-target predictor among the GP variants, which is exactly the structure expected when the underlying series is a random walk with drift.
-
-% =============================================================================
-% Exercise 5: Author contributions
-% =============================================================================
-\probsection{5}
+\probsection{5}{Contributions}
 
 All authors contributed equally.
+
+\addcontentsline{toc}{section}{References}
+\bibliographystyle{plainnat}
+\bibliography{references}
 
 \end{document}

@@ -1,0 +1,22 @@
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{lcccccccccc}
+\toprule
+ & SPY & XLK & XLF & XLE & GLD & SLV & GSG & BTC & ETH & TLT \\
+\midrule
+SPY & - & 0 & 0 & 0 & 2 & 0 & 2 & 1 & 0 & 2 \\
+XLK & 0 & - & 0 & 0 & 2 & 0 & 2 & 0 & 0 & 2 \\
+XLF & 1 & 0 & - & 0 & 2 & 0 & 1 & 1 & 0 & 2 \\
+XLE & 0 & 0 & 0 & - & 2 & 0 & 1 & 1 & 0 & 2 \\
+GLD & 0 & 0 & 0 & 0 & - & 0 & 0 & 2 & 0 & 0 \\
+SLV & 0 & 0 & 0 & 0 & 0 & - & 0 & 1 & 0 & 2 \\
+GSG & 0 & 0 & 0 & 0 & 0 & 0 & - & 0 & 0 & 2 \\
+BTC & 0 & 0 & 0 & 0 & 2 & 0 & 0 & - & 0 & 0 \\
+ETH & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & - & 0 \\
+TLT & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & - \\
+\bottomrule
+\end{tabular}
+\caption{Pairwise Granger causality on weekly EWMA volatility. Entries as in the returns tables. \textit{Notes:} The test is applied to EWMA volatility states. A non-zero cell means volatility in the row asset helps forecast volatility in the column asset after the column asset's own volatility history is used.}
+\label{tab:vol_weekly}
+\end{table}
