@@ -1059,17 +1059,17 @@ models were not beaten by a very rich benchmark. They were matched by a
 standard ARMA-GARCH model that is built for weak means and persistent
 volatility. In this sample, that structure is exactly what the data reward.
 
-\probsection{4}{Synthesis}
+\probsection{4}{Summary of Lessons}
 
-The three exercises fit together as one empirical message. Lecture 2 gives the
-return and volatility notation used to build the asset networks. Lecture 3
-then separates conditional mean from conditional variance, which is exactly the
-distinction behind the ARMA-GARCH baseline. Lecture 4 turns lagged predictive
-content into a testable Granger restriction. Lecture 5 gives the recurrent,
-LSTM and GP formulas used for the nonlinear forecasting exercise. Read in that
-order, the results are coherent: first moments of equity returns remain weak
-and unstable, while second moments are persistent and more connected across
-assets.
+Financial modelling begins from the instruments themselves: bonds, stocks, derivatives and structured products differ in payoff, risk profile and pricing logic, and no quantitative analysis is meaningful without understanding those differences first. The organising principle behind valuation is no-arbitrage, which states that two portfolios with identical future payoffs must carry the same present value. This benchmark also sets the main warning for prediction: if markets are efficient and prices already reflect all available information, forecasting excess returns is inherently difficult, and any claimed signal must survive rigorous out-of-sample testing before it can be trusted.
+
+Log returns are the natural object for time-series modelling because they aggregate additively across periods, which allows linear lag structures to operate directly on the return sequence. In practice, financial returns are far from normally distributed: they exhibit volatility clustering, heavy tails and occasional extreme observations that a Gaussian assumption would severely underweight. Volatility is better treated as a persistent conditional risk state than as a fixed parameter. The EWMA estimator captures this by giving geometrically decaying weight to past squared returns, so a large shock enters tomorrow's variance estimate and then fades slowly rather than disappearing after one observation. Exercise~1 confirmed this empirically: the EWMA volatility networks contained 21 weekly edges against only 6 in the return networks, showing that the smoothed second moment carries memory across assets long after the signed return has faded.
+
+A useful decomposition separates a financial time series into a deterministic component, a predictable conditional mean and an unpredictable innovation. ARMA models target the mean component while GARCH models address the conditional variance by allowing the innovation size to feed back into next-period risk. This separation proved important in Exercise~3: both ARMA-GARCH specifications produced persistence values of $\hat{\alpha}+\hat{\beta}\approx 0.98$, confirming that nearly all of a monthly variance shock carries into the next period's forecast. Neural networks extend this toolkit by approximating nonlinear functions of the inputs, but their advantage over simpler models depends on whether the target contains enough stable signal to reward the additional flexibility. When the signal-to-noise ratio is low, a tightly specified classical model can match or outperform a flexible one.
+
+Granger causality is a forecasting concept rather than a structural claim: one series Granger-causes another if its past improves linear prediction of the receiver after the receiver's own history is already included. Lag selection and sample size interact in ways that can distort inference, because adding lags improves in-sample fit while consuming degrees of freedom that a short sample cannot spare. Exercise~1 made this risk visible: the monthly return network produced 14 edges against only 6 at the weekly frequency, yet with only 23 monthly observations several of those edges used lags near the maximum allowed horizon and should be read as leads to investigate rather than stable trading delays. Feature selection addresses a related problem on the predictor side: financial candidate variables are often noisy, persistent and mutually correlated, so a disciplined selection step is necessary to avoid fitting historical coincidences rather than stable relationships.
+
+Recurrent neural networks model sequential dependence by carrying a hidden state forward through time, and the LSTM architecture refines this with gates that control how much past information is retained or overwritten at each step. Gaussian processes take a complementary approach: rather than learning a parametric function, they define a prior over functions through a kernel that measures similarity between observations and produce predictions as posterior means weighted by that similarity. Both model families must be evaluated on strictly chronological test sets, because apparent fit can come from persistence or leakage rather than genuine predictive content. Exercise~2 demonstrated this directly: the GP reached 98.87\% \texttt{pcorrect} on log prices by exploiting the near-unit-root level of the index, yet its direction MCC was 0.000, confirming that a high table score on a persistent target does not imply a usable return signal.
 
 \probsection{5}{Contributions}
 
