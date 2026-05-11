@@ -1,12 +1,15 @@
-"""Exercise 3: ARMA-GARCH benchmark forecasts.
+"""Exercise 3: ARMA-GARCH baselines for the S&P 500 forecast.
 
-Team: Marco Canal, Michael Duarte Gonçalves and Olivia Peter
-Date: May 15, 2026
+Team:  Marco Canal, Michael Duarte Gonçalves, Olivia Peter
+Date:  May 15, 2026
 
-Purpose:
-    Fit ARMA-GARCH baselines to the same chronological test block used in
-    Exercise 2. Write metrics, model-order diagnostics, prediction files and
-    figures to ``output/ex3``.
+What this script does:
+    Fits a plain ARMA-GARCH and a Yeo-Johnson-transformed ARMA-GARCH on
+    the same chronological train+validation block used in Exercise 2, then
+    scores both on the same test block. The point is a clean head-to-head
+    against the neural-network / GP / LSTM line-up from Exercise 2.
+
+    Numbered CSVs, LaTeX fragments and figures land in output/ex3/.
 """
 
 from __future__ import annotations
@@ -24,9 +27,13 @@ from sklearn.metrics import accuracy_score, matthews_corrcoef, mean_squared_erro
 from sklearn.preprocessing import PowerTransformer
 from statsmodels.tsa.arima.model import ARIMA
 
+# auto_arima, arch, and statsmodels all complain about small samples or boundary fits. Real failures are caught further down.
 warnings.filterwarnings("ignore")
 
 LOGGER = logging.getLogger(__name__)
+
+
+# --- Part 1: paths, knobs, and what we save
 
 SEED = 7
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -36,14 +43,17 @@ DATA_FILE = PROJECT_ROOT / "data" / "goyal-welch2022Monthly.csv"
 OUTPUT_DIR = PROJECT_ROOT / "output" / "ex3"
 EX2_OUTPUT_DIR = PROJECT_ROOT / "output" / "ex2"
 
+# Same window as Exercise 2.
 START_DATE = "1927-01-01"
-END_DATE = "2021-12-31"
+END_DATE   = "2021-12-31"
 N_LAGS = 3
 
-# Match Exercise 2 exactly so the benchmark comparison is clean.
+# Match the Exercise 2 split exactly, otherwise the head-to-head is not honest.
 P_TRAIN = 0.60
-P_VAL = 0.15
+P_VAL   = 0.15
 
+# Numbered output files.
+# The LaTeX side just \input{} them.
 OUT = {
     "ex2_metrics": "02_ex2_metrics.csv",
     "metrics_csv": "01_ex3_metrics.csv",
@@ -62,12 +72,18 @@ OUT = {
 
 
 def configure_logging() -> None:
-    """Use concise run-level logs instead of printing full tables."""
+    """Keep logs concise. Full tables go to disk, not to stdout."""
     logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.INFO)
 
 
+# ----- Part 2: load the Goyal-Welch panel
+
 def load_monthly_panel() -> pd.DataFrame:
-    """Load Goyal-Welch data and build the return and log-price series."""
+    """Pull Goyal-Welch from disk and build the two base series we need.
+
+    The CSV stores the index level as a string with thousands separators,
+    so we strip those and then take log price and log return on top.
+    """
     LOGGER.info("Loading Goyal-Welch monthly data")
     data = pd.read_csv(DATA_FILE)
     data["Date"] = pd.to_datetime(data["yyyymm"].astype(str), format="%Y%m")
@@ -87,8 +103,15 @@ def load_monthly_panel() -> pd.DataFrame:
     return panel
 
 
+# -- Part 3 -- design and chronological split
+
 def return_design(panel: pd.DataFrame) -> pd.DataFrame:
-    """Replicate the Exercise 2 return-target design only for date alignment."""
+    """Rebuild the Exercise 2 design so the split lines up date for date.
+
+    Note: we don't actually feed these lagged columns into the ARMA fit
+    (the state-space model carries its own history). We only build them so
+    the indexing logic matches Exercise 2 exactly.
+    """
     target = panel["log_ret"].shift(-1)
     lagged_returns = {
         f"log_ret_lag{lag}": panel["log_ret"].shift(lag - 1)
@@ -99,7 +122,7 @@ def return_design(panel: pd.DataFrame) -> pd.DataFrame:
 
 
 def chronological_split_index(design: pd.DataFrame) -> tuple[pd.Index, pd.Index]:
-    """Return train-plus-validation and test indices under the course split."""
+    """Train+validation indices and test indices, in calendar order."""
     n_obs = len(design)
     n_train = int(P_TRAIN * n_obs)
     n_val = int(P_VAL * n_obs)
@@ -121,8 +144,14 @@ def chronological_split_index(design: pd.DataFrame) -> tuple[pd.Index, pd.Index]
     return fit_idx, test_idx
 
 
+# Part 4 --- the course scoring conventions
+
 def nrmse(y_true: np.ndarray, y_pred: np.ndarray) -> float:
-    """Course PyLab NRMSE convention used throughout the report."""
+    """PyLab NRMSE used throughout the course.
+
+    The variance in the denominator is taken on the realised series itself
+    (not on the residuals). That is the PyLab convention, so we keep it.
+    """
     y_true = np.asarray(y_true, dtype=float).ravel()
     y_pred = np.asarray(y_pred, dtype=float).ravel()
     denominator = np.mean(np.sum((y_true - y_true.mean()) ** 2))
@@ -133,16 +162,22 @@ def nrmse(y_true: np.ndarray, y_pred: np.ndarray) -> float:
 
 
 def pcorrect(y_true: np.ndarray, y_pred: np.ndarray) -> float:
-    """Course score transformation. It is not a sign accuracy."""
+    """100 * (1 - NRMSE). Heads up: this is not a sign accuracy."""
     return 100.0 * (1.0 - nrmse(y_true, y_pred))
 
+
+# Part 5 ----- ARMA + GARCH on the residuals -----
 
 def transform_returns(
     fit_returns: np.ndarray,
     test_returns: np.ndarray,
     transformer: PowerTransformer | None,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Fit any transformation only on the estimation block."""
+    """Optional Yeo-Johnson transform.
+
+    Fit on the estimation block,
+    apply the same map to the test block.
+    """
     if transformer is None:
         return fit_returns, test_returns
     fit_transformed = transformer.fit_transform(fit_returns.reshape(-1, 1)).ravel()
@@ -156,10 +191,13 @@ def fit_baseline(
     transformer: PowerTransformer | None = None,
     max_pq: int = 5,
 ) -> dict:
-    """Fit ARMA by AIC, fit GARCH on ARMA residuals and forecast the test block."""
+    """One full pass: ARMA by AIC, GARCH on residuals, forecast test block.
+
+    Returns a small dict with predictions, fitted orders, and GARCH params.
+    """
     fit_t, test_t = transform_returns(fit_returns, test_returns, transformer)
 
-    # Returns are already stationary for this benchmark, so d is fixed at zero.
+    # Returns are already stationary for this benchmark, so we pin d = 0.
     order_search = auto_arima(
         fit_t,
         seasonal=False,
@@ -187,9 +225,7 @@ def fit_baseline(
         enforce_invertibility=True,
     ).fit()
 
-    # The conditional mean is handled by ARMA. GARCH receives residuals only.
-    # Scaling by 100 improves numerical conditioning without changing alpha or
-    # beta, which are the persistence parameters used in the report.
+    # ARMA handles the conditional mean; GARCH only sees residuals. Scaling by 100 helps numerical conditioning for the arch package and does not change alpha or beta (the persistence params we actually report).
     garch = arch_model(
         arima.resid * 100.0,
         mean="Zero",
@@ -201,6 +237,8 @@ def fit_baseline(
     alpha = garch.params["alpha[1]"]
     beta = garch.params["beta[1]"]
 
+    # Apply the fitted ARMA filter to the full series, so we can read off
+    # the test-block one-step-ahead predictions without refitting.
     full_series = np.concatenate([fit_t, test_t])
     extended = arima.apply(full_series, refit=False)
     fitted_full = np.asarray(extended.fittedvalues)
@@ -224,6 +262,8 @@ def fit_baseline(
     }
 
 
+# -------- Part 6: metric rows for the report
+
 def regression_metrics(
     y_true: np.ndarray,
     y_pred: np.ndarray,
@@ -231,7 +271,7 @@ def regression_metrics(
     model: str,
     params: str,
 ) -> dict:
-    """Metrics for return and price targets."""
+    """Row of metrics for return and price (the continuous targets)."""
     score = nrmse(y_true, y_pred)
     return {
         "target": target,
@@ -253,7 +293,7 @@ def classification_metrics(
     model: str,
     params: str,
 ) -> dict:
-    """Metrics for the binary direction target."""
+    """Row of metrics for the binary direction target."""
     return {
         "target": target,
         "model": model,
@@ -268,7 +308,7 @@ def classification_metrics(
 
 
 def describe_parameters(result: dict) -> str:
-    """Format the fitted ARMA and GARCH parameters for the CSV registry."""
+    """One-line summary of the fitted ARMA + GARCH parameters."""
     p_order, q_order = result["order"]
     return (
         f"ARMA({p_order},{q_order}); GARCH(1,1) "
@@ -279,7 +319,10 @@ def describe_parameters(result: dict) -> str:
 
 
 def run_baselines(fit_returns: np.ndarray, test_returns: np.ndarray) -> dict[str, dict]:
-    """Run the plain and Yeo-Johnson ARMA-GARCH specifications."""
+    """Run both flavours of ARMA-GARCH."""
+    # The two specifications we report on:
+    # - plain log returns
+    # - Yeo-Johnson-normalised log returns
     variants = {
         "ARMA-GARCH (plain)": None,
         "ARMA-GARCH (YeoJohnson)": PowerTransformer(method="yeo-johnson"),
@@ -302,7 +345,11 @@ def build_result_tables(
     y_direction: np.ndarray,
     log_price_t: pd.Series,
 ) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, dict[str, np.ndarray]]]:
-    """Convert fitted models into report metrics, orders and prediction arrays."""
+    """Turn the dict of fitted models into the artifacts the report needs.
+
+    We get back: a metrics DataFrame, an orders DataFrame, and a nested
+    dict of test-block predictions keyed by target then by model.
+    """
     metric_rows = []
     order_rows = []
     predictions: dict[str, dict[str, np.ndarray]] = {
@@ -313,6 +360,7 @@ def build_result_tables(
 
     for model_name, result in results.items():
         return_pred = result["pred"]
+        # Price prediction = today's log price + predicted log return.
         price_pred = log_price_t.values + return_pred
         direction_pred = (return_pred > 0).astype(int)
         params = describe_parameters(result)
@@ -353,8 +401,14 @@ def build_result_tables(
     return pd.DataFrame(metric_rows), pd.DataFrame(order_rows), predictions
 
 
+# Part 7 -- combine with Exercise 2 and write LaTeX --
+
 def combine_with_ex2_metrics(metrics: pd.DataFrame) -> pd.DataFrame:
-    """Create the comparison table when Exercise 2 metrics are available."""
+    """Stack our metrics on top of Ex2's so the report has one comparison table.
+
+    If Ex2 has not been run yet, we just return our own metrics and log a
+    warning so the user notices.
+    """
     ex2_path = EX2_OUTPUT_DIR / OUT["ex2_metrics"]
     if not ex2_path.exists():
         LOGGER.warning("Skipping combined table because %s is missing", ex2_path)
@@ -376,7 +430,7 @@ def write_latex_table(
     label: str,
     caption: str,
 ) -> None:
-    """Wrap a pandas tabular in a LaTeX table environment."""
+    """Wrap a pandas tabular in a booktabs table environment."""
     tex = table.to_latex(
         index=False,
         float_format="{:.4f}".format,
@@ -396,7 +450,7 @@ def write_latex_table(
 
 
 def write_tables(metrics: pd.DataFrame, orders: pd.DataFrame, combined: pd.DataFrame) -> None:
-    """Write CSV and LaTeX files consumed by the report."""
+    """Save the three table files (CSV + LaTeX) the report reads back."""
     metrics.to_csv(OUTPUT_DIR / OUT["metrics_csv"], index=False)
     orders.to_csv(OUTPUT_DIR / OUT["orders"], index=False)
     combined.to_csv(OUTPUT_DIR / OUT["combined_csv"], index=False)
@@ -417,11 +471,16 @@ def write_tables(metrics: pd.DataFrame, orders: pd.DataFrame, combined: pd.DataF
     )
 
 
+# ----- Part 8 ----- residual diagnostics
+
 def residual_diagnostics(
     y_truths: dict[str, np.ndarray],
     predictions: dict[str, dict[str, np.ndarray]],
 ) -> pd.DataFrame:
-    """Residual diagnostics for regression targets."""
+    """Mean, std and first-lag autocorrelation of the residuals.
+
+    Direction is skipped on purpose. Residuals on a 0/1 target are not really informative.
+    """
     rows = []
     for target, model_predictions in predictions.items():
         if target == "direction":
@@ -441,6 +500,8 @@ def residual_diagnostics(
     return pd.DataFrame(rows)
 
 
+# Part 9 ---- prediction CSVs and the forecast figures ----
+
 def plot_predictions(
     target: str,
     dates: pd.Index,
@@ -448,9 +509,10 @@ def plot_predictions(
     predictions: dict[str, np.ndarray],
     output_path: Path,
 ) -> None:
-    """Save the target-specific forecast comparison figure."""
+    """One figure per target. Realised series in black, each model on top in a dashed style."""
     fig, ax = plt.subplots(figsize=(10, 4.5))
     ax.plot(dates, y_true, label="actual", color="black", linewidth=1.4)
+    # We only have two ARMA-GARCH variants, so a tiny fixed style iterator does the job.
     style_iter = iter([("--", "tab:purple"), (":", "tab:red")])
     for model_name, y_pred in predictions.items():
         linestyle, colour = next(style_iter)
@@ -476,7 +538,7 @@ def write_predictions_and_figures(
     y_truths: dict[str, np.ndarray],
     predictions: dict[str, dict[str, np.ndarray]],
 ) -> None:
-    """Write prediction CSVs, figures and residual diagnostics."""
+    """Write the per-target prediction CSV, the figure, and the residual diagnostics."""
     pred_files = {
         "return": OUT["pred_return"],
         "price": OUT["pred_price"],
@@ -508,6 +570,8 @@ def write_predictions_and_figures(
     )
 
 
+# --- Wrap-up: glue everything together
+
 def main() -> None:
     configure_logging()
     np.random.seed(SEED)
@@ -517,9 +581,11 @@ def main() -> None:
     design = return_design(panel)
     fit_idx, test_idx = chronological_split_index(design)
 
+    # Estimation block (train + validation) and test block, as separate arrays.
     returns_full = design["TARGET"]
     returns_fit = returns_full.loc[fit_idx]
     returns_test = returns_full.loc[test_idx]
+    # log_price_t is the log price at time t; the one-step price target is the value at t + 1.
     log_price_t = panel["log_price"].reindex(test_idx)
     log_price_t1 = panel["log_price"].shift(-1).reindex(test_idx)
 

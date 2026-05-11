@@ -1,11 +1,15 @@
-"""Exercise 1: asset causality and volatility spillovers.
+"""Exercise 1: who pushes whom across the asset universe.
 
-Team: Marco Canal, Michael Duarte Gonçalves and Olivia Peter
-Date: May 15, 2026
+Team:  Marco Canal, Michael Duarte Gonçalves, Olivia Peter
+Date:  May 15, 2026
 
-Purpose:
-    Build weekly and monthly Granger networks for asset returns and EWMA
-    volatility. Save numbered tables and figures for the final report.
+What this script does:
+    We pull daily prices for the ten tickers the assignment lists, resample
+    them to weekly and monthly closes, and then test pairwise Granger
+    causality on returns and on EWMA volatility. The output is a set of
+    numbered CSVs and PDFs that the LaTeX report reads back in.
+
+    Run it once. Everything the writeup cites should land in output/ex1/.
 """
 
 import logging
@@ -22,39 +26,43 @@ from statsmodels.tsa.stattools import grangercausalitytests
 
 LOGGER = logging.getLogger(__name__)
 
-# Reproducibility: yfinance/statsmodels do not use randomness here, but we set
-# numpy seed anyway so any future stochastic addition (e.g. bootstrap) is
-# reproducible.
+
+# --- Part 1: setup, knobs, and where the artifacts go
+
+# Nothing in this script is random right now. The seed sits here so the day we add a bootstrap, the run still reproduces.
 SEED = 42
 np.random.seed(SEED)
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent if SCRIPT_DIR.name == "scripts" else SCRIPT_DIR
 
-# Asset universe specified by the assignment
+# The ten tickers the brief hands us: broad equity, three sector ETFs, metals, a commodity basket, two cryptos, long bonds.
 ASSETS = [
     "SPY", "XLK", "XLF", "XLE", "GLD",
     "SLV", "GSG", "BTC-USD", "ETH-USD", "TLT",
 ]
 
-# Display labels for tables and plots (BTC/ETH read better without the -USD)
+# Friendlier names
+# for tables and plots.
+# BTC-USD and ETH-USD just read better without the suffix.
 LABELS = {a: a.replace("-USD", "") for a in ASSETS}
 
-# Team-assigned epoch
+# Window the team was assigned.
 START_DATE = "2024-01-01"
-END_DATE = "2026-01-01"   # yfinance end is exclusive so this includes 2025-12-31
+END_DATE   = "2026-01-01"   # yfinance treats end as exclusive, so 2025-12-31 is the last day in.
 
-# Causality settings
+# Knobs for the causality tests and the volatility model.
 MAX_LAG = 5
-ALPHA = 0.05
+ALPHA   = 0.05
 EWMA_LAM = 0.94
 MIN_DAILY_OBSERVATIONS = 450
 DEBUG_TABLES = False
 
-# Output directory
+# Everything written by this script lands here.
 OUTPUT_DIR = PROJECT_ROOT / "output" / "ex1"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
+# Filenames are numbered so the LaTeX report can \input them in a stable order without having to think about it.
 OUT = {
     "prices_daily": "01_ex1_prices_daily.csv",
     "returns_weekly": "02_ex1_returns_weekly.csv",
@@ -79,13 +87,15 @@ OUT = {
     "net_vol_m": "21_ex1_network_vol_monthly.pdf",
 }
 
+
+# ----- Part 2: pull and clean the daily price panel~
 def configure_logging() -> None:
-    """Keep the run readable without printing every intermediate table."""
+    """Keep the run readable. We log step headlines, not every table."""
     logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.INFO)
 
 
 def download_prices() -> pd.DataFrame:
-    """Download adjusted closes for the assignment asset universe."""
+    """Grab adjusted closes for the ten tickers from Yahoo."""
     LOGGER.info(
         "Downloading %d assets from %s to %s",
         len(ASSETS),
@@ -103,11 +113,15 @@ def download_prices() -> pd.DataFrame:
 
 
 def clean_prices(prices: pd.DataFrame) -> pd.DataFrame:
-    """Align the price panel to the ETF calendar and remove stale rows."""
+    """Line the panel up to a single trading calendar and drop stale rows.
+
+    Crypto trades seven days a week. The ETFs don't. We pick the SPY
+    calendar as the shared clock so the joint panel is rectangular and the
+    VAR fits don't choke on weekend NaNs.
+    """
     prices = prices.dropna(how="all")
 
-    # Crypto trades seven days per week. The ETF calendar is the common
-    # investable clock for this assignment, so SPY defines the shared dates.
+    # SPY decides what "a trading day" means for the project.
     prices = prices.loc[prices["SPY"].notna()].copy()
     prices = prices.ffill(limit=1)
 
@@ -119,6 +133,8 @@ def clean_prices(prices: pd.DataFrame) -> pd.DataFrame:
         n_before - len(prices),
     )
 
+    # Yahoo sometimes hands back a half-populated panel on a bad day. We'd
+    # rather crash early than overwrite the saved outputs with garbage.
     if len(prices) < MIN_DAILY_OBSERVATIONS:
         raise RuntimeError(
             "Yahoo Finance returned an incomplete price panel. "
@@ -131,43 +147,50 @@ def clean_prices(prices: pd.DataFrame) -> pd.DataFrame:
 
 configure_logging()
 
-# statsmodels and pandas can emit many small-sample warnings in the monthly
-# VAR fits. Actual fitting failures are handled explicitly in causality_table.
+# statsmodels and pandas
+# like to chatter
+# when a monthly VAR runs on a small sample. Actual fitting errors are caught further down in causality_table, so the rest is just noise.
 warnings.filterwarnings("ignore")
 
 prices = clean_prices(download_prices())
 prices.rename(columns=LABELS).to_csv(OUTPUT_DIR / OUT["prices_daily"])
 
 
-# === Part 3: Resampling helpers =============================================
-# Per the assignment we work at weekly and monthly frequency. We resample the
-# adjusted closes and recompute log returns at the new frequency. This is the
-# cleanest reading of "sampling the series weekly and then monthly".
+# ---- Part 3 ---- weekly and monthly closes (and the log returns)
+
+# Our reading of the brief, "sample the series weekly and then monthly": resample the adjusted closes to the new
+# frequency and recompute log returns there.
+# We take the period-end close.
 def resample_last(panel: pd.DataFrame, rule: str) -> pd.DataFrame:
-    """Use the last available observation in each period."""
+    """Last observation of each period."""
     return panel.resample(rule).last().dropna(how="any")
 
 
 def log_returns(p: pd.DataFrame) -> pd.DataFrame:
-    """Period log returns from a price panel."""
+    """Per-period log returns from a price panel."""
     return np.log(p / p.shift(1)).dropna()
 
 
-# === Part 4: EWMA volatility (RiskMetrics) ==================================
+# -- Part 4 -- RiskMetrics EWMA volatility
 def ewma_vol(
     returns: pd.DataFrame,
     lam: float = EWMA_LAM,
 ) -> pd.DataFrame:
-    """RiskMetrics EWMA volatility, applied column-wise."""
+    """Column-wise EWMA volatility, RiskMetrics flavour (lambda = 0.94)."""
     var = returns.pow(2).ewm(alpha=1 - lam, adjust=False).mean()
-    # Drop the first observation: with adjust=False the recursion is seeded
-    # by r_0^2 itself, so the first value is mechanical and uninformative.
+    # First row is just r_0^2 by construction (no history yet). Drop it so
+    # the series we keep is informative and not a seeding artefact.
     return np.sqrt(var).iloc[1:]
 
 
-# === Part 5: Pairwise causality engine ======================================
+# ------- Part 5: pairwise Granger machinery
 def optimal_lag_aic(pair: pd.DataFrame, max_lag: int = MAX_LAG) -> int:
-    """Return the AIC-optimal VAR lag using the class no-intercept convention."""
+    """Pick the VAR lag that minimises AIC.
+
+    We follow the class convention and fit without an intercept
+    (`trend="n"`). AIC can return 0 on very flat pairs, but the Granger
+    test needs at least one lag, so we floor at 1.
+    """
     model = VAR(pair)
     sel = model.select_order(maxlags=max_lag, trend="n")
     chosen = int(sel.aic)
@@ -175,10 +198,13 @@ def optimal_lag_aic(pair: pd.DataFrame, max_lag: int = MAX_LAG) -> int:
 
 
 def granger_pvalue(cause_then_effect: pd.DataFrame, lag: int) -> float:
-    """statsmodels.grangercausalitytests tests whether the SECOND column
-    Granger-causes the FIRST. We standardise by passing data in the order
-    [effect, cause] so this function's input order is the natural
-    [cause, effect]. Return the p-value of the F-test at `lag`."""
+    """Run the Granger F-test and return its p-value.
+
+    Heads up: ``statsmodels.grangercausalitytests`` asks whether the SECOND
+    column causes the FIRST. That convention is easy to get wrong, so this
+    wrapper accepts data in the natural [cause, effect] order and flips it
+    internally before handing it to statsmodels.
+    """
     cause, effect = cause_then_effect.columns
     data_for_test = cause_then_effect[[effect, cause]]
     res = grangercausalitytests(
@@ -193,11 +219,15 @@ def granger_pvalue(cause_then_effect: pd.DataFrame, lag: int) -> float:
 def causality_table(returns_or_vol: pd.DataFrame,
                     max_lag: int = MAX_LAG,
                     alpha: float = ALPHA) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Build the directed causality table for the given panel. Rows are the
-    cause, columns the effect, entries the AIC-optimal lag if the test
-    rejects the null at level alpha, else 0. Diagonal entries are NaN
-    (printed as '-' in LaTeX). Also return a parallel table of p-values for
-    diagnostic purposes."""
+    """Build the directed lag table for one panel.
+
+    Rows are causes, columns are effects. If a -> b is significant at
+    level ``alpha``, we write the AIC-optimal lag. Otherwise we write 0.
+    The diagonal gets a literal "-" so the LaTeX prints a dash.
+
+    The second return value is the matching p-value table. We keep it for
+    diagnostics; it doesn't end up in the report.
+    """
     cols = returns_or_vol.columns.tolist()
     lag_table = pd.DataFrame(0, index=cols, columns=cols, dtype=object)
     pval_table = pd.DataFrame(np.nan, index=cols, columns=cols, dtype=float)
@@ -207,22 +237,24 @@ def causality_table(returns_or_vol: pd.DataFrame,
             if a == b:
                 lag_table.loc[a, b] = "-"
                 continue
-            # Bivariate VAR for lag selection (order [a, b] is irrelevant for
-            # AIC since the model is symmetric in its two endogenous series).
+            # The bivariate VAR is symmetric in its two endogenous series,
+            # so the order of [a, b] is irrelevant for lag selection. We
+            # leave it as-is.
             pair = returns_or_vol[[a, b]].dropna()
             if len(pair) <= max_lag + 2:
-                # Not enough observations to fit a VAR(max_lag); record 0.
+                # Not enough rows to fit a VAR(max_lag). Record 0 and move on.
                 lag_table.loc[a, b] = 0
                 continue
             try:
                 lag = optimal_lag_aic(pair, max_lag=max_lag)
-                # Granger test: a -> b at the chosen lag
+                # Test the direction a -> b at the chosen lag.
                 p = granger_pvalue(returns_or_vol[[a, b]].dropna(), lag)
                 pval_table.loc[a, b] = p
                 lag_table.loc[a, b] = lag if p < alpha else 0
             except Exception as exc:
-                # Numerical singularities happen in tiny monthly samples.
-                # The decision-table convention treats them as non-rejections.
+                # Tiny monthly samples occasionally throw a singular matrix.
+                # We treat that as "no evidence of causality", which keeps
+                # the decision table well-defined.
                 lag_table.loc[a, b] = 0
                 LOGGER.debug(
                     "Causality %s -> %s failed with %s, recorded 0",
@@ -233,9 +265,7 @@ def causality_table(returns_or_vol: pd.DataFrame,
     return lag_table, pval_table
 
 
-# === Part 6: Build the four directed lag tables =============================
-# Build the four series we need. Returns and volatility at weekly and
-# monthly frequency.
+# Part 6 --- build the four panels, then run the tests ---
 prices_W = resample_last(prices, "W-FRI")
 prices_M = resample_last(prices, "ME")
 
@@ -245,7 +275,7 @@ ret_M = log_returns(prices_M)
 vol_W = ewma_vol(ret_W)
 vol_M = ewma_vol(ret_M)
 
-# Rename columns to display labels for the output artefacts
+# Switch to the prettier column names before anything is saved or plotted.
 for df in (ret_W, ret_M, vol_W, vol_M):
     df.rename(columns=LABELS, inplace=True)
 
@@ -269,7 +299,7 @@ LOGGER.info("Testing monthly EWMA-volatility causality")
 lag_vM, p_vM = causality_table(vol_M)
 
 
-# === Part 7: Save tables as CSV and as LaTeX fragments =======================
+# --- Part 7 --- save the lag tables (CSV + LaTeX fragment)
 def save_table(
     lag_tab: pd.DataFrame,
     csv_name: str,
@@ -277,8 +307,10 @@ def save_table(
     label: str,
     caption: str,
 ) -> None:
-    """Write the lag table to CSV and to a self-contained LaTeX fragment.
-    The LaTeX uses booktabs and is intended to be \\input{} from the report."""
+    """Save the lag table twice: once as CSV, once as a booktabs LaTeX
+    fragment. The .tex file is meant to be ``\\input{}`` directly from the
+    report.
+    """
     csv_path = OUTPUT_DIR / csv_name
     tex_path = OUTPUT_DIR / tex_name
     lag_tab.to_csv(csv_path)
@@ -338,9 +370,9 @@ save_table(
 )
 
 
-# === Part 8: Plot the four causality networks ===============================
-# Asset-class colour map: distinguishing the macro buckets makes the network
-# narrative immediate (who drives whom, where fear spills across classes).
+# Part 8 -- the four network plots --
+
+# Colouring nodes by asset class makes the story easier to read at a glance: equity-on-equity dominating the picture looks different from arrows that cut across asset classes (which is what risk-off spillovers usually look like).
 ASSET_CLASS = {
     "SPY": "Equity (broad)",
     "XLK": "Equity (sector)",
@@ -362,26 +394,30 @@ CLASS_COLOUR = {
     "Treasuries":      "#72b095",
 }
 
-# Fixed circular order so all four networks are visually comparable
+# Fixed seat assignment around the circle, so the four plots are directly
+# comparable to each other.
 CIRCLE_ORDER = ["SPY", "XLK", "XLF", "XLE", "GSG",
                 "GLD", "SLV", "TLT", "ETH", "BTC"]
 
 
 def _fixed_circular_layout(nodes: list) -> dict:
-    """Deterministic circular layout in a fixed asset order."""
+    """Deterministic circle layout, 12 o'clock at the top, clockwise from there."""
     n = len(nodes)
     pos = {}
     for i, name in enumerate(nodes):
-        theta = np.pi / 2 - 2 * np.pi * i / n   # start at top, go clockwise
+        theta = np.pi / 2 - 2 * np.pi * i / n
         pos[name] = np.array([np.cos(theta), np.sin(theta)])
     return pos
 
 
 def plot_network(lag_tab: pd.DataFrame, title: str, out_pdf: Path) -> None:
-    """Draw the directed graph implied by lag_tab. Nodes are assets coloured
-    by asset class; an edge a -> b is drawn whenever lag_tab.loc[a, b] is a
-    positive integer, labelled with that lag. Node positions are fixed
-    across the four figures so plots are visually comparable."""
+    """Render the directed graph encoded by ``lag_tab`` and save it as PDF.
+
+    Nodes are coloured by asset class. We draw an edge a -> b whenever
+    ``lag_tab.loc[a, b]`` is a positive integer, and label it with that
+    lag. Layout and colours are fixed across the four plots so the reader
+    can compare them like-for-like.
+    """
     G = nx.DiGraph()
     for a in lag_tab.index:
         G.add_node(a)
@@ -401,7 +437,8 @@ def plot_network(lag_tab: pd.DataFrame, title: str, out_pdf: Path) -> None:
     nx.draw_networkx_labels(G, pos, font_size=11, font_weight="bold", ax=ax)
 
     if G.number_of_edges() > 0:
-        # Curved edges with prominent arrowheads
+        # A slight curve on every edge prevents the two arrows of a
+        # reciprocal pair from drawing on top of each other.
         nx.draw_networkx_edges(
             G, pos, arrows=True, arrowsize=22, arrowstyle="-|>",
             edge_color="#333", width=1.6, alpha=0.85,
@@ -415,7 +452,7 @@ def plot_network(lag_tab: pd.DataFrame, title: str, out_pdf: Path) -> None:
             ax=ax,
         )
 
-    # Legend for asset classes
+    # One legend at the bottom of the figure, asset classes only.
     from matplotlib.patches import Patch
     handles = [Patch(facecolor=CLASS_COLOUR[c], edgecolor="black", label=c)
                for c in dict.fromkeys(ASSET_CLASS.values())]
@@ -441,19 +478,21 @@ plot_network(lag_vM, "Volatility spillover network (monthly, EWMA)",
              OUTPUT_DIR / OUT["net_vol_m"])
 
 
-# === Part 9: Contemporaneous correlations ===================================
-# Helpful for the narrative: we report the contemporaneous correlation matrix
-# at each frequency so the report can compare the lead-lag picture against the
-# instantaneous co-movement picture.
+# ------ Part 9: contemporaneous correlation snapshots
+
+# Useful for the writeup.
+# Granger = who leads whom.
+# Correlation = what moves together right now.
+# Putting the two side by side makes the spillover story easier to read.
 ret_W.corr().round(2).to_csv(OUTPUT_DIR / OUT["corr_returns_weekly"])
 ret_M.corr().round(2).to_csv(OUTPUT_DIR / OUT["corr_returns_monthly"])
 vol_W.corr().round(2).to_csv(OUTPUT_DIR / OUT["corr_vol_weekly"])
 vol_M.corr().round(2).to_csv(OUTPUT_DIR / OUT["corr_vol_monthly"])
 
 
-# === Wrap-up: print the four tables to stdout for quick inspection ==========
+# --- Wrap-up: end-of-run summaries
 def show(name: str, t: pd.DataFrame) -> None:
-    """Log a full decision table only during explicit debug runs."""
+    """Optional debug dump of a full decision table. Off by default."""
     if not DEBUG_TABLES:
         return
     with pd.option_context("display.max_columns", None, "display.width", 200):
@@ -465,7 +504,8 @@ show("Returns causality lags (monthly)", lag_rM)
 show("Volatility causality lags (weekly)",  lag_vW)
 show("Volatility causality lags (monthly)", lag_vM)
 
-# Count edges per frequency for the narrative.
+# Quick edge-count line. Handy for the writeup: 10 assets give 90 ordered
+# pairs once the diagonal is excluded.
 for name, tab in [("ret_W", lag_rW), ("ret_M", lag_rM),
                   ("vol_W", lag_vW), ("vol_M", lag_vM)]:
     n_edges = sum(1 for a in tab.index for b in tab.columns
