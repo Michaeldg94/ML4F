@@ -1,0 +1,10 @@
+metric,value
+daily_obs,502
+weekly_returns,104
+weekly_vol,103
+monthly_returns,23
+monthly_vol,22
+edges_ret_w,6
+edges_ret_m,14
+edges_vol_w,21
+edges_vol_m,17
