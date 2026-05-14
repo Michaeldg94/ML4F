@@ -1,4 +1,4 @@
-# Exact-version pin for Task 1 (BSE ML for Finance, Arratia, 2026).
+# Exact-version pin for Task 1 (BSE: ML for Finance Course, 2026).
 # Tested on Python 3.11.4.
 
 # Core scientific stack

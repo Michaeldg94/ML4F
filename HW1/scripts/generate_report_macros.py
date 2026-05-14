@@ -1,638 +1,362 @@
-"""Regenerate LaTeX-ready metric tables and report macros for HW1.
+"""Generate LaTeX \\newcommand macros for every numerical value the report quotes.
 
-This script is intentionally deterministic. It reads the numbered CSV outputs
-from the exercise scripts, recomputes the course metrics where needed and writes
-small LaTeX fragments consumed by ``solution.tex``.
+Team:    Marco Canal, Michael Duarte Gonçalves, Olivia Peter
+Date:    May 15, 2026
+
+PURPOSE
+    Read the CSV artefacts produced by exercise_01.py, the Colab-run
+    exercise_02.ipynb and exercise_03.py and emit one LaTeX fragment per
+    exercise that solution.tex can ``\\input`` directly. Every metric in
+    the report is then a single ``\\exTwoReturnGPNRMSE`` macro that cannot
+    drift away from the CSV: re-run this script after any change to the
+    outputs and the report numbers update automatically.
+
+    Naming convention:
+        \\exOne...    Exercise 1 quantities (edge counts, daily/weekly/monthly
+                     observation counts, contemporaneous correlations).
+        \\exTwo...    Exercise 2 quantities (split sizes, per-target metrics,
+                     sensitivity numbers, Lasso-selected features).
+        \\exThree...  Exercise 3 quantities (ARMA orders, GARCH parameters,
+                     baseline metrics).
+
+INPUTS (read from ../output/ex{1,2,3}/, all created on demand)
+    ex1/  01_ex1_prices_daily.csv ... 17_ex1_contemp_corr_vol_monthly.csv
+          + the four 06/08/10/12_ex1_causality_*.csv lag tables
+    ex2/  01_ex2_feature_selection.csv, 02_ex2_metrics.csv, 04_ex2_sensitivity.csv
+    ex3/  01_ex3_metrics.csv, 03_ex3_arma_orders.csv
+
+OUTPUTS
+    output/ex1/22_ex1_report_macros.tex
+    output/ex2/13_ex2_report_macros.tex
+    output/ex3/13_ex3_report_macros.tex
 """
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
+from typing import Iterable
 
 import numpy as np
 import pandas as pd
-from sklearn.metrics import accuracy_score, matthews_corrcoef
 
-ROOT = Path(__file__).resolve().parents[1]
-EX1 = ROOT / "output" / "ex1"
-EX2 = ROOT / "output" / "ex2"
-EX3 = ROOT / "output" / "ex3"
+LOGGER = logging.getLogger(__name__)
 
-EWMA_LAMBDA = 0.94
-MAX_GRANGER_LAG = 5
-GRANGER_ALPHA_PERCENT = 5
-MAX_FORWARD_FILL_DAYS = 1
-P_TRAIN = 0.60
-P_VAL = 0.15
-P_TEST = 0.25
-MAX_ARMA_ORDER = 5
-GARCH_P = 1
-GARCH_Q = 1
-EX2_START_DATE = "1927-01-01"
-EX2_END_DATE = "2021-12-31"
-REGRESSION_TARGETS = ("return", "price")
-FORECAST_MODELS = ("NN", "GP", "LSTM")
-DROPPED_VARIABLES = ("dp", "svar", "bm")
-N_LAGS_TARGET = 3
-N_LAGS_EXOG = 3
+SCRIPT_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = SCRIPT_DIR.parent if SCRIPT_DIR.name == "scripts" else SCRIPT_DIR
+OUTPUT_ROOT = PROJECT_ROOT / "output"
+EX1_DIR = OUTPUT_ROOT / "ex1"
+EX2_DIR = OUTPUT_ROOT / "ex2"
+EX3_DIR = OUTPUT_ROOT / "ex3"
+# Created on demand so the script can be re-run from a fresh checkout
+# without any manual setup.
+for _d in (EX1_DIR, EX2_DIR, EX3_DIR):
+    _d.mkdir(parents=True, exist_ok=True)
+
+EWMA_LAM = 0.94      # RiskMetrics decay
+START_DATE_EX1 = "2024-01-01"
+END_DATE_EX1 = "2025-12-31"
+START_DATE_EX2 = "1927-01-01"
+END_DATE_EX2 = "2021-12-31"
 
 
-def class_nrmse(y_true: np.ndarray, y_pred: np.ndarray) -> float:
-    """Course PyLab NRMSE convention used in the lecture notebooks."""
-    y_true = np.asarray(y_true, dtype=float).ravel()
-    y_pred = np.asarray(y_pred, dtype=float).ravel()
-    denom = np.mean(np.sum((y_true - y_true.mean()) ** 2))
-    if np.isclose(denom, 0.0):
-        raise ValueError("target has zero variance")
-    return float(np.sqrt(np.mean((y_true - y_pred) ** 2) / denom))
+def configure_logging() -> None:
+    """Single-line headlines, nothing else."""
+    logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.INFO)
 
 
-def rmse(y_true: np.ndarray, y_pred: np.ndarray) -> float:
-    """Root mean squared error in the target's natural units."""
-    y_true = np.asarray(y_true, dtype=float).ravel()
-    y_pred = np.asarray(y_pred, dtype=float).ravel()
-    return float(np.sqrt(np.mean((y_true - y_pred) ** 2)))
+# === Macro emission helpers =================================================
+def macro(name, value):
+    """Emit one ``\\newcommand`` definition.
+
+    We append ``\\xspace`` to every value so that a macro followed by a
+    space-and-letter in solution.tex (e.g. ``\\exOneStartDate to``) does
+    not collapse the space (TeX swallows the space after a control word,
+    which would render as "2024-01-01to"). ``\\xspace`` is no-op before
+    punctuation and inside math mode, so it is safe in both contexts.
+    Requires ``\\usepackage{xspace}`` in the preamble of solution.tex.
+    """
+    return f"\\newcommand{{\\{name}}}{{{value}\\xspace}}"
 
 
-def fmt4(value: object) -> str:
-    """Four-decimal table formatting with blank cells for missing values."""
-    if pd.isna(value):
-        return ""
-    return f"{float(value):.4f}"
+# Tiny rounding helpers, one per precision we report. Kept untyped on
+# purpose -- adding `(x: float) -> str` would just be visual noise.
+def fmt4(x):
+    return f"{float(x):.4f}"
 
 
-def fmt2(value: object) -> str:
-    """Two-decimal table formatting with blank cells for missing values."""
-    if pd.isna(value):
-        return ""
-    return f"{float(value):.2f}"
+def fmt3(x):
+    return f"{float(x):.3f}"
 
 
-def fmt1(value: object) -> str:
-    """One-decimal formatting for compact descriptive report quantities."""
-    if pd.isna(value):
-        return ""
-    return f"{float(value):.1f}"
+def fmt2(x):
+    return f"{float(x):.2f}"
 
 
-def fmt0(value: object) -> str:
-    """Integer-style formatting for percentages and counts."""
-    if pd.isna(value):
-        return ""
-    return f"{float(value):.0f}"
-
-
-def tex_escape(value: object) -> str:
-    """Escape only the characters that can break a LaTeX macro body."""
-    text = str(value)
-    repl = {
-        "\\": r"\textbackslash{}",
-        "&": r"\&",
-        "%": r"\%",
-        "$": r"\$",
-        "#": r"\#",
-        "_": r"\_",
-        "{": r"\{",
-        "}": r"\}",
-        "~": r"\textasciitilde{}",
-        "^": r"\textasciicircum{}",
-    }
-    for old, new in repl.items():
-        text = text.replace(old, new)
-    return text
-
-
-def write_table(df: pd.DataFrame, path: Path, label: str, caption: str) -> None:
-    """Write a complete LaTeX table fragment from a DataFrame."""
-    tex = df.to_latex(
-        index=False,
-        float_format="{:.4f}".format,
-        column_format="l" * len(df.columns),
-        escape=False,
-    )
-    path.write_text(
-        "\\begin{table}[H]\n\\centering\n\\small\n"
-        + tex
-        + f"\\caption{{{caption}}}\n\\label{{tab:{label}}}\n"
-        + "\\end{table}\n",
-        encoding="utf-8",
-    )
-
-
-def sensitivity_summary_rows(metrics: pd.DataFrame, sens: pd.DataFrame) -> list[str]:
-    rows: list[str] = []
-
-    # Regression targets share the same metric scale. Direction is added below
-    # because its cells are accuracy, not NRMSE.
-    for target in REGRESSION_TARGETS:
-        main = metrics[metrics["target"].eq(target)]
-        base_values = metric_values(main, FORECAST_MODELS, "NRMSE")
-        rows.append(f"{target} & $-$ & " + " & ".join(base_values) + r" \\")
-        for dropped in DROPPED_VARIABLES:
-            subset = sens[sens["target"].eq(target) & sens["dropped"].eq(dropped)]
-            values = metric_values(subset, FORECAST_MODELS, "NRMSE")
-            rows.append(f"{target} & {dropped} & " + " & ".join(values) + r" \\")
-        if target == "return":
-            rows.append(r"\midrule")
-    rows.append(r"\midrule")
-    rows.append(r"\multicolumn{5}{l}{direction is reported as accuracy} \\")
-    main = metrics[metrics["target"].eq("direction")]
-    base_values = metric_values(main, FORECAST_MODELS, "accuracy")
-    rows.append("direction & $-$ & " + " & ".join(base_values) + r" \\")
-    for dropped in DROPPED_VARIABLES:
-        subset = sens[sens["target"].eq("direction") & sens["dropped"].eq(dropped)]
-        values = metric_values(subset, FORECAST_MODELS, "accuracy")
-        rows.append(f"direction & {dropped} & " + " & ".join(values) + r" \\")
-    return rows
-
-
-def metric_values(
-    frame: pd.DataFrame,
-    models: tuple[str, ...],
-    metric: str,
-) -> list[str]:
-    """Extract one formatted metric per model in a stable order."""
-    values: list[str] = []
-    for model in models:
-        value = frame.loc[frame["model"].eq(model), metric].iloc[0]
-        values.append(fmt4(value))
-    return values
-
-
-def write_sensitivity_summary_table(metrics: pd.DataFrame, sens: pd.DataFrame) -> None:
-    rows = sensitivity_summary_rows(metrics, sens)
-    lines = [
-        r"\begin{table}[H]",
-        r"\centering",
-        r"\small",
-        r"\begin{tabular}{llrrr}",
-        r"\toprule",
-        r"Target & Dropped & NN & GP & LSTM \\",
-        r"\midrule",
-        *rows,
-        r"\bottomrule",
-        r"\end{tabular}",
-        (
-            r"\caption{Sensitivity analysis. Regression cells report NRMSE. "
-            r"Direction cells report accuracy. Each ablation removes all lags "
-            r"of the indicated predictor.}"
-        ),
-        r"\label{tab:ex2_sensitivity}",
-        r"\end{table}",
-    ]
-    (EX2 / "05_ex2_sensitivity.tex").write_text(
-        "\n".join(lines) + "\n",
-        encoding="utf-8",
-    )
-
-
-def update_ex2_metrics() -> None:
-    metrics_path = EX2 / "02_ex2_metrics.csv"
-    metrics = pd.read_csv(metrics_path)
-    metrics = metrics[~metrics["model"].isin(["RandomWalk", "RandomWalkDrift"])].copy()
-    metrics = metrics.drop(columns=[c for c in ["R2_oos"] if c in metrics.columns])
-
-    pred_files = {
-        "return": EX2 / "06_ex2_pred_return.csv",
-        "price": EX2 / "08_ex2_pred_price.csv",
-        "direction": EX2 / "10_ex2_pred_direction.csv",
-    }
-    for target, file_path in pred_files.items():
-        pred = pd.read_csv(file_path, index_col=0)
-        y = pred["y_true"].to_numpy()
-        for idx, row in metrics[metrics["target"].eq(target)].iterrows():
-            col = f"pred_{row['model']}"
-            if col not in pred.columns:
-                continue
-            yhat = pred[col].to_numpy()
-            if target == "direction":
-                metrics.loc[idx, "accuracy"] = accuracy_score(y, yhat)
-                metrics.loc[idx, "MCC"] = matthews_corrcoef(y, yhat)
-            else:
-                score = class_nrmse(y, yhat)
-                metrics.loc[idx, "RMSE"] = rmse(y, yhat)
-                metrics.loc[idx, "NRMSE"] = score
-                metrics.loc[idx, "pcorrect"] = 100.0 * (1.0 - score)
-
-    metrics.to_csv(metrics_path, index=False)
-    write_table(
-        metrics,
-        EX2 / "03_ex2_metrics.tex",
-        "ex2_metrics",
-        "Test-set forecast performance for each target and model.",
-    )
-
-    sens_path = EX2 / "04_ex2_sensitivity.csv"
-    sens = pd.read_csv(sens_path)
-    sens = sens.drop(columns=[c for c in ["R2_oos"] if c in sens.columns])
-    reg = sens["target"].isin(["return", "price"]) & sens["NRMSE"].notna()
-    if sens.loc[sens["target"].eq("return"), "NRMSE"].max() > 0.30:
-        scale = np.sqrt(sens.loc[reg, "n"].astype(float))
-        sens.loc[reg, "NRMSE"] = sens.loc[reg, "NRMSE"] / scale
-        sens.loc[reg, "pcorrect"] = 100.0 * (1.0 - sens.loc[reg, "NRMSE"])
-    sens.to_csv(sens_path, index=False)
-    write_sensitivity_summary_table(metrics, sens)
-
-
-def update_ex3_metrics() -> None:
-    metrics_path = EX3 / "01_ex3_metrics.csv"
-    if not metrics_path.exists():
-        return
-    metrics = pd.read_csv(metrics_path)
-    metrics = metrics.drop(columns=[c for c in ["R2_oos"] if c in metrics.columns])
-    pred_files = {
-        "return": EX3 / "06_ex3_pred_return.csv",
-        "price": EX3 / "08_ex3_pred_price.csv",
-        "direction": EX3 / "10_ex3_pred_direction.csv",
-    }
-    for target, file_path in pred_files.items():
-        pred = pd.read_csv(file_path, index_col=0)
-        y = pred["y_true"].to_numpy()
-        for idx, row in metrics[metrics["target"].eq(target)].iterrows():
-            col = f"pred_{row['model']}"
-            if col not in pred.columns:
-                continue
-            yhat = pred[col].to_numpy()
-            if target == "direction":
-                metrics.loc[idx, "accuracy"] = accuracy_score(y, yhat)
-                metrics.loc[idx, "MCC"] = matthews_corrcoef(y, yhat)
-            else:
-                score = class_nrmse(y, yhat)
-                metrics.loc[idx, "RMSE"] = rmse(y, yhat)
-                metrics.loc[idx, "NRMSE"] = score
-                metrics.loc[idx, "pcorrect"] = 100.0 * (1.0 - score)
-
-    metrics.to_csv(metrics_path, index=False)
-    write_table(
-        metrics,
-        EX3 / "02_ex3_metrics.tex",
-        "ex3_metrics",
-        "Test-set forecast performance for the ARMA-GARCH baselines.",
-    )
-
-    ex2 = pd.read_csv(EX2 / "02_ex2_metrics.csv")
-    combined = pd.concat(
-        [
-            ex2.assign(source="Ex 2 (NN/GP/LSTM)"),
-            metrics.assign(source="Ex 3 (ARMA-GARCH)"),
-        ],
-        ignore_index=True,
-    )
-    combined.to_csv(EX3 / "04_ex3_combined.csv", index=False)
-    write_table(
-        combined,
-        EX3 / "05_ex3_combined.tex",
-        "ex3_combined",
-        "Exercise 2 models and Exercise 3 ARMA-GARCH baselines.",
-    )
-
-
-def macro(name: str, value: object) -> str:
-    return f"\\newcommand{{\\{name}}}{{{value}}}"
+def fmt1(x):
+    return f"{float(x):.1f}"
 
 
 def count_edges(path: Path) -> int:
-    table = pd.read_csv(path, index_col=0)
-    numeric = table.replace("-", 0).apply(pd.to_numeric)
-    return int((numeric.to_numpy() != 0).sum())
+    """Count significant directed edges (positive-integer entries) in a lag table.
+
+    The lag-table CSVs mix integers (lags 1..5), zeros (no edge) and the
+    literal string ``"-"`` on the diagonal, so a naive ``(df > 0).sum()``
+    would crash on the diagonal. We try-cast each cell and tally only the
+    positive integers.
+    """
+    df = pd.read_csv(path, index_col=0)
+    n = 0
+    for r in df.index:
+        for c in df.columns:
+            v = df.loc[r, c]
+            try:
+                iv = int(v)
+                if iv > 0:
+                    n += 1
+            except (ValueError, TypeError):
+                # Diagonal '-' or any unparseable value: not an edge.
+                pass
+    return n
 
 
-def corr_value(path: Path, a: str, b: str) -> float:
-    table = pd.read_csv(path, index_col=0)
-    return float(table.loc[a, b])
+def row_count_csv(path: Path) -> int:
+    """Count data rows in a CSV (i.e. lines minus the header).
+
+    Cheaper than a full ``pd.read_csv`` when we only need the row count;
+    matters when this script runs as part of a tight rebuild loop.
+    """
+    return sum(1 for _ in path.open()) - 1
 
 
-def row_count(path: Path) -> int:
-    return int(pd.read_csv(path, index_col=0).shape[0])
+def write_fragment(out_path: Path, sections: list[tuple[str, list[str]]]) -> int:
+    """Write a single ``\\input``-able fragment grouping macro sections.
 
-
-def ex2_panel() -> pd.DataFrame:
-    """Rebuild the monthly panel used by the Exercise 2 notebook."""
-    data = pd.read_csv(ROOT / "data" / "goyal-welch2022Monthly.csv")
-    data["Date"] = pd.to_datetime(data["yyyymm"].astype(str), format="%Y%m")
-    data = data.set_index("Date").drop(columns="yyyymm")
-    data["Index"] = data["Index"].str.replace(",", "", regex=False).astype(float)
-    data["dp"] = np.log(data["D12"]) - np.log(data["Index"])
-    data["bm"] = data["b/m"]
-    data["log_price"] = np.log(data["Index"])
-    data["log_ret"] = data["log_price"].diff()
-    return data.loc[
-        EX2_START_DATE:EX2_END_DATE,
-        ["Index", "log_price", "log_ret", *DROPPED_VARIABLES],
-    ].dropna()
-
-
-def ex2_design_count(panel: pd.DataFrame) -> int:
-    """Count rows after target alignment and lag construction."""
-    columns = {
-        f"log_ret_lag{lag}": panel["log_ret"].shift(lag - 1)
-        for lag in range(1, N_LAGS_TARGET + 1)
-    }
-    for variable in DROPPED_VARIABLES:
-        for lag in range(1, N_LAGS_EXOG + 1):
-            columns[f"{variable}_lag{lag}"] = panel[variable].shift(lag - 1)
-    target = panel["log_ret"].shift(-1)
-    design = pd.concat(
-        [pd.DataFrame(columns, index=panel.index), target.rename("TARGET")],
-        axis=1,
-    ).dropna()
-    return int(len(design))
-
-
-def write_ex1_macros() -> None:
-    prices = EX1 / "01_ex1_prices_daily.csv"
-    returns_w = EX1 / "02_ex1_returns_weekly.csv"
-    returns_m = EX1 / "03_ex1_returns_monthly.csv"
-    vol_series_w = EX1 / "04_ex1_ewma_vol_weekly.csv"
-    vol_series_m = EX1 / "05_ex1_ewma_vol_monthly.csv"
-    ret_w = EX1 / "06_ex1_causality_returns_weekly.csv"
-    ret_m = EX1 / "08_ex1_causality_returns_monthly.csv"
-    vol_w = EX1 / "10_ex1_causality_vol_weekly.csv"
-    vol_m = EX1 / "12_ex1_causality_vol_monthly.csv"
-    corr_ret_w = EX1 / "14_ex1_contemp_corr_returns_weekly.csv"
-    corr_vol_w = EX1 / "16_ex1_contemp_corr_vol_weekly.csv"
-    n_assets = pd.read_csv(ret_w, index_col=0).shape[0]
-    monthly_obs = row_count(returns_m)
+    Returns the total macro count for the caller to log.
+    """
     lines = [
-        "% Auto-generated by scripts/generate_report_macros.py",
-        macro("ExOneAssetCount", n_assets),
-        macro("ExOneOrderedPairs", n_assets * (n_assets - 1)),
-        macro("ExOneMaxForwardFillDays", MAX_FORWARD_FILL_DAYS),
-        macro("ExOneEwmaLambda", fmt2(EWMA_LAMBDA)),
-        macro("ExOneEwmaShockWeight", fmt2(1.0 - EWMA_LAMBDA)),
-        macro("ExOneEwmaHalfLife", fmt1(np.log(0.5) / np.log(EWMA_LAMBDA))),
-        macro("ExOneMaxGrangerLag", MAX_GRANGER_LAG),
-        macro("ExOneGrangerAlphaPercent", GRANGER_ALPHA_PERCENT),
-        macro("ExOneMonthlyMaxLagPostLagObservations", monthly_obs - MAX_GRANGER_LAG),
-        macro("ExOneMaxLagParametersPerEquation", 1 + 2 * MAX_GRANGER_LAG),
-        macro("ExOneDailyObservations", row_count(prices)),
-        macro("ExOneWeeklyReturnObservations", row_count(returns_w)),
-        macro("ExOneMonthlyReturnObservations", row_count(returns_m)),
-        macro("ExOneWeeklyVolObservations", row_count(vol_series_w)),
-        macro("ExOneMonthlyVolObservations", row_count(vol_series_m)),
-        macro("ExOneReturnWeeklyEdges", count_edges(ret_w)),
-        macro("ExOneReturnMonthlyEdges", count_edges(ret_m)),
-        macro("ExOneVolWeeklyEdges", count_edges(vol_w)),
-        macro("ExOneVolMonthlyEdges", count_edges(vol_m)),
-        macro("ExOneCorrReturnWeeklySpyXlk", fmt2(corr_value(corr_ret_w, "SPY", "XLK"))),
-        macro("ExOneCorrReturnWeeklyGldSlv", fmt2(corr_value(corr_ret_w, "GLD", "SLV"))),
-        macro("ExOneCorrReturnWeeklyBtcEth", fmt2(corr_value(corr_ret_w, "BTC", "ETH"))),
-        macro("ExOneCorrVolWeeklySpyXlk", fmt2(corr_value(corr_vol_w, "SPY", "XLK"))),
-        macro("ExOneCorrVolWeeklySpyXlf", fmt2(corr_value(corr_vol_w, "SPY", "XLF"))),
-        macro("ExOneCorrVolWeeklySpyXle", fmt2(corr_value(corr_vol_w, "SPY", "XLE"))),
+        "% AUTO-GENERATED by scripts/generate_report_macros.py. Do not edit by hand.",
+        "% Re-run `python scripts/generate_report_macros.py` after any output change.",
+        "",
     ]
-    (EX1 / "22_ex1_report_macros.tex").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    n_total = 0
+    for header, macros in sections:
+        macros = list(macros)
+        n_total += len(macros)
+        lines.append(f"% --- {header} ({len(macros)} macros) ---")
+        lines.extend(macros)
+        lines.append("")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text("\n".join(lines))
+    return n_total
 
 
-TARGET_ALIAS = {"return": "Return", "price": "Price", "direction": "Direction"}
-MODEL_ALIAS = {
-    "NN": "Nn",
-    "GP": "Gp",
-    "LSTM": "Lstm",
+# === Part 1: Exercise 1 macros ==============================================
+def emit_ex1_macros() -> list[str]:
+    """Edge counts, return/vol observation counts and contemporaneous correlations."""
+    out: list[str] = []
+
+    out.append(macro("exOneStartDate", START_DATE_EX1))
+    out.append(macro("exOneEndDate", END_DATE_EX1))
+    out.append(macro("exOneEwmaLambda", fmt2(EWMA_LAM)))
+    # Per-period half-life of the EWMA recursion: log(0.5) / log(lambda)
+    half_life = float(np.log(0.5) / np.log(EWMA_LAM))
+    out.append(macro("exOneEwmaHalfLife", fmt1(half_life)))
+
+    # Edge counts read straight off the saved lag tables.
+    out.append(macro("exOneEdgesRW", count_edges(EX1_DIR / "06_ex1_causality_returns_weekly.csv")))
+    out.append(macro("exOneEdgesRM", count_edges(EX1_DIR / "08_ex1_causality_returns_monthly.csv")))
+    out.append(macro("exOneEdgesVW", count_edges(EX1_DIR / "10_ex1_causality_vol_weekly.csv")))
+    out.append(macro("exOneEdgesVM", count_edges(EX1_DIR / "12_ex1_causality_vol_monthly.csv")))
+
+    # Observation counts derived directly from the saved CSVs, so there
+    # is no separate stats summary file to keep in sync.
+    out.append(macro("exOneDailyObs",       row_count_csv(EX1_DIR / "01_ex1_prices_daily.csv")))
+    out.append(macro("exOneWeeklyReturns",  row_count_csv(EX1_DIR / "02_ex1_returns_weekly.csv")))
+    out.append(macro("exOneMonthlyReturns", row_count_csv(EX1_DIR / "03_ex1_returns_monthly.csv")))
+    out.append(macro("exOneWeeklyVol",      row_count_csv(EX1_DIR / "04_ex1_ewma_vol_weekly.csv")))
+    out.append(macro("exOneMonthlyVol",     row_count_csv(EX1_DIR / "05_ex1_ewma_vol_monthly.csv")))
+
+    # Contemporaneous correlations the report quotes verbatim
+    crw = pd.read_csv(EX1_DIR / "14_ex1_contemp_corr_returns_weekly.csv", index_col=0)
+    cvm = pd.read_csv(EX1_DIR / "17_ex1_contemp_corr_vol_monthly.csv", index_col=0)
+    out.append(macro("exOneCorrSPYXLKWeekly", fmt2(crw.loc["SPY", "XLK"])))
+    out.append(macro("exOneCorrGLDSLVWeekly", fmt2(crw.loc["GLD", "SLV"])))
+    out.append(macro("exOneCorrBTCETHWeekly", fmt2(crw.loc["BTC", "ETH"])))
+    out.append(macro("exOneCorrSPYETHVolMonthly", fmt2(cvm.loc["SPY", "ETH"])))
+    out.append(macro("exOneCorrSPYBTCVolMonthly", fmt2(cvm.loc["SPY", "BTC"])))
+    out.append(macro("exOneCorrSPYGLDVolMonthly", fmt2(cvm.loc["SPY", "GLD"])))
+
+    return out
+
+
+# === Part 2: Exercise 2 macros ==============================================
+TARGET_TAG = {"return": "Return", "price": "Price", "direction": "Direction"}
+MODEL_TAG = {
+    "NN": "NN", "GP": "GP", "LSTM": "LSTM",
     "BaselineMean": "BaselineMean",
     "BaselineMajority": "BaselineMajority",
-    "ARMA-GARCH (plain)": "ArmaPlain",
-    "ARMA-GARCH (YeoJohnson)": "ArmaYeoJohnson",
-}
-METRIC_ALIAS = {
-    "RMSE": "Rmse",
-    "NRMSE": "Nrmse",
-    "pcorrect": "Pcorrect",
-    "n": "N",
-    "accuracy": "Accuracy",
-    "MCC": "Mcc",
-}
-MODEL_LABEL = {
-    ("return", "NN"): r"2 layers, $(128,64)$, ReLU",
-    ("return", "GP"): "RBF + WhiteNoise",
-    ("return", "LSTM"): r"1 layer, 64 units, $T{=}6$",
-    ("return", "BaselineMean"): "training mean",
-    ("price", "NN"): "1 layer, 64 units, ReLU",
-    ("price", "GP"): "custom RBF + Linear + WhiteNoise",
-    ("price", "LSTM"): r"1 layer, 64 units, $T{=}6$",
-    ("price", "BaselineMean"): "training mean",
-    ("direction", "NN"): "1 layer, 128 units, tanh",
-    ("direction", "GP"): "RatQuad + WhiteNoise",
-    ("direction", "LSTM"): r"2 layers, 32 units, $T{=}6$",
-    ("direction", "BaselineMajority"): "training majority class",
 }
 
 
-def metric_macro_name(prefix: str, target: str, model: str, metric: str) -> str:
-    return f"{prefix}{TARGET_ALIAS[target]}{MODEL_ALIAS[model]}{METRIC_ALIAS[metric]}"
+def metric_macro_name(target, model, metric):
+    # Build a CamelCase macro name like exTwoReturnNNNRMSE.
+    return f"exTwo{TARGET_TAG[target]}{MODEL_TAG[model]}{metric}"
 
 
-def write_metric_macros(df: pd.DataFrame, prefix: str) -> list[str]:
-    lines: list[str] = []
+def emit_ex2_metric_macros() -> list[str]:
+    """Per-(target, model) RMSE / NRMSE / pcorrect / accuracy / MCC macros."""
+    df = pd.read_csv(EX2_DIR / "02_ex2_metrics.csv")
+    out: list[str] = []
     for _, row in df.iterrows():
-        target = row["target"]
-        model = row["model"]
-        if target not in TARGET_ALIAS or model not in MODEL_ALIAS:
+        target, model = row["target"], row["model"]
+        if model not in MODEL_TAG:
             continue
-        for metric in METRIC_ALIAS:
-            if metric not in row:
-                continue
-            value = row[metric]
-            if metric in ["RMSE", "NRMSE", "accuracy", "MCC"]:
-                formatted = fmt4(value)
-            elif metric == "pcorrect":
-                formatted = fmt2(value)
-            elif metric == "n":
-                formatted = "" if pd.isna(value) else str(int(value))
-            else:
-                formatted = str(value)
-            if formatted != "":
-                lines.append(
-                    macro(metric_macro_name(prefix, target, model, metric), formatted)
-                )
-    return lines
+        if target in ("return", "price"):
+            out.append(macro(metric_macro_name(target, model, "RMSE"),
+                             fmt4(row["RMSE"])))
+            out.append(macro(metric_macro_name(target, model, "NRMSE"),
+                             fmt4(row["NRMSE"])))
+            out.append(macro(metric_macro_name(target, model, "Pcorrect"),
+                             fmt2(row["pcorrect"])))
+        elif target == "direction":
+            out.append(macro(metric_macro_name(target, model, "Accuracy"),
+                             fmt4(row["accuracy"])))
+            out.append(macro(metric_macro_name(target, model, "MCC"),
+                             fmt4(row["MCC"])))
+    return out
 
 
-def command(name: str, body: str) -> str:
-    return f"\\newcommand{{\\{name}}}{{%\n{body}\n}}"
+def emit_ex2_sensitivity_macros() -> list[str]:
+    """Drop-each-indicator sensitivity numbers (regression NRMSE + direction accuracy)."""
+    df = pd.read_csv(EX2_DIR / "04_ex2_sensitivity.csv")
+    out: list[str] = []
+    for _, row in df.iterrows():
+        target, model, dropped = row["target"], row["model"], row["dropped"]
+        if model not in MODEL_TAG:
+            continue
+        drop_tag = dropped.capitalize()  # Dp / Svar / Bm
+        if target in ("return", "price"):
+            name = f"exTwoSens{TARGET_TAG[target]}{MODEL_TAG[model]}Drop{drop_tag}NRMSE"
+            out.append(macro(name, fmt4(row["NRMSE"])))
+        elif target == "direction":
+            name_acc = f"exTwoSens{TARGET_TAG[target]}{MODEL_TAG[model]}Drop{drop_tag}Accuracy"
+            name_mcc = f"exTwoSens{TARGET_TAG[target]}{MODEL_TAG[model]}Drop{drop_tag}MCC"
+            out.append(macro(name_acc, fmt4(row["accuracy"])))
+            out.append(macro(name_mcc, fmt4(row["MCC"])))
+    return out
 
 
-def ex2_rows(metrics: pd.DataFrame, target: str) -> str:
-    models = {
-        "return": ["NN", "GP", "LSTM", "BaselineMean"],
-        "price": ["NN", "GP", "LSTM", "BaselineMean"],
-        "direction": ["NN", "GP", "LSTM", "BaselineMajority"],
-    }[target]
-    rows = []
-    for model in models:
-        model_text = "Baseline" if model.startswith("Baseline") else model
-        label = MODEL_LABEL[(target, model)]
-        if target == "direction":
-            rows.append(
-                f"{model_text} & {label} & "
-                f"\\{metric_macro_name('ExTwo', target, model, 'accuracy')} & "
-                f"\\{metric_macro_name('ExTwo', target, model, 'MCC')} \\\\"
-            )
-        else:
-            rows.append(
-                f"{model_text} & {label} & "
-                f"\\{metric_macro_name('ExTwo', target, model, 'RMSE')} & "
-                f"\\{metric_macro_name('ExTwo', target, model, 'NRMSE')} & "
-                f"\\{metric_macro_name('ExTwo', target, model, 'pcorrect')} \\\\"
-            )
-    return "\n".join(rows)
+def emit_ex2_panel_macros() -> list[str]:
+    """Train/val/test split sizes derived from the published Ex 2 outputs.
+
+    After the direction-target leak fix all three targets share the same
+    design-matrix size (1137 rows), so the chronological 60/15/25 split
+    gives 682 / 170 / 285 across the board.
+    """
+    n_test = pd.read_csv(EX2_DIR / "02_ex2_metrics.csv").iloc[0]["n"]
+    # We know the design size is 1137 and split fractions are 60/15/25.
+    # NOTE: 1137 is hard-coded because the panel size is not currently
+    # exported as a separate artefact; the value was verified by hand
+    # after the direction-target leak fix.
+    # TODO: replace with a panel_size.csv emitted from the notebook.
+    n_total = 1137
+    n_train = int(0.60 * n_total)
+    n_val = int(0.15 * n_total)
+    out = [
+        macro("exTwoNTrain", n_train),
+        macro("exTwoNVal", n_val),
+        macro("exTwoNTest", int(n_test)),
+        macro("exTwoStartDate", START_DATE_EX2),
+        macro("exTwoEndDate", END_DATE_EX2),
+    ]
+    return out
 
 
-def write_ex2_macros() -> None:
-    metrics = pd.read_csv(EX2 / "02_ex2_metrics.csv")
-    sens = pd.read_csv(EX2 / "04_ex2_sensitivity.csv")
-    panel = ex2_panel()
-    design_n = ex2_design_count(panel)
-    train_n = int(P_TRAIN * design_n)
-    validation_n = int(P_VAL * design_n)
-    test_n = design_n - train_n - validation_n
-    lines = ["% Auto-generated by scripts/generate_report_macros.py"]
-    lines.extend(write_metric_macros(metrics, "ExTwo"))
-    for target in ["return", "price", "direction"]:
-        n = int(metrics.loc[metrics["target"].eq(target), "n"].dropna().iloc[0])
-        lines.append(macro(f"ExTwo{TARGET_ALIAS[target]}TestN", n))
-    lines.extend(
-        [
-            command("ExTwoReturnRows", ex2_rows(metrics, "return")),
-            command("ExTwoPriceRows", ex2_rows(metrics, "price")),
-            command("ExTwoDirectionRows", ex2_rows(metrics, "direction")),
-            macro("ExTwoPanelObservations", len(panel)),
-            macro("ExTwoDesignObservations", design_n),
-            macro("ExTwoTrainObservations", train_n),
-            macro("ExTwoValidationObservations", validation_n),
-            macro("ExTwoTestObservations", test_n),
-            macro("ExTwoTrainSharePercent", fmt0(100.0 * P_TRAIN)),
-            macro("ExTwoValidationSharePercent", fmt0(100.0 * P_VAL)),
-            macro("ExTwoTestSharePercent", fmt0(100.0 * P_TEST)),
-            macro("ExTwoTargetLagCount", N_LAGS_TARGET),
-            macro("ExTwoExogenousLagCount", N_LAGS_EXOG),
-            macro(
-                "ExTwoCandidateFeatureCount",
-                N_LAGS_TARGET + len(DROPPED_VARIABLES) * N_LAGS_EXOG,
-            ),
-            macro("ExTwoReturnSelectedFeatures", "bm\\_lag1, bm\\_lag2 and log\\_ret\\_lag3"),
-            macro(
-                "ExTwoPriceSelectedFeatures",
-                "log\\_price\\_lag1, dp\\_lag1, svar\\_lag1, "
-                "svar\\_lag3 and bm\\_lag2",
-            ),
-            macro("ExTwoDirectionSelectedFeatureCount", 11),
-            macro("ExTwoSensitivityBestPriceGpDropped", tex_escape(
-                sens[sens["target"].eq("price") & sens["model"].eq("GP")]
-                .sort_values("NRMSE")
-                .iloc[0]["dropped"]
-            )),
-            macro("ExTwoSensitivityBestPriceGpNrmse", fmt4(
-                sens[sens["target"].eq("price") & sens["model"].eq("GP")]
-                .sort_values("NRMSE")
-                .iloc[0]["NRMSE"]
-            )),
-        ]
-    )
-    (EX2 / "13_ex2_report_macros.tex").write_text(
-        "\n".join(lines) + "\n",
-        encoding="utf-8",
-    )
+def emit_ex2_feature_macros() -> list[str]:
+    """The Lasso-selected feature lists, comma-separated for inline LaTeX."""
+    df = pd.read_csv(EX2_DIR / "01_ex2_feature_selection.csv")
+    out: list[str] = []
+    for col in df.columns:
+        features = [str(f).replace("_", r"\_") for f in df[col].dropna()]
+        out.append(macro(
+            f"exTwoFeatures{col.capitalize()}",
+            ", ".join(features),
+        ))
+        out.append(macro(
+            f"exTwoFeatures{col.capitalize()}Count",
+            len(features),
+        ))
+    return out
 
 
-def write_ex3_macros() -> None:
-    metrics_path = EX3 / "01_ex3_metrics.csv"
-    combined_path = EX3 / "04_ex3_combined.csv"
-    orders_path = EX3 / "03_ex3_arma_orders.csv"
-    if not metrics_path.exists() or not combined_path.exists() or not orders_path.exists():
-        return
-    metrics = pd.read_csv(metrics_path)
-    combined = pd.read_csv(combined_path)
-    orders = pd.read_csv(orders_path)
-    lines = ["% Auto-generated by scripts/generate_report_macros.py"]
-    lines.extend(write_metric_macros(metrics, "ExThree"))
+# === Part 3: Exercise 3 macros ==============================================
+ORDER_TAG = {"ARMA-GARCH (plain)": "Plain", "ARMA-GARCH (YeoJohnson)": "YJ"}
+
+
+def emit_ex3_macros() -> list[str]:
+    """ARMA orders, GARCH parameters, baseline NRMSE / accuracy / MCC."""
+    orders = pd.read_csv(EX3_DIR / "03_ex3_arma_orders.csv")
+    metrics = pd.read_csv(EX3_DIR / "01_ex3_metrics.csv")
+
+    out: list[str] = []
     for _, row in orders.iterrows():
-        model = row["model"]
-        alias = MODEL_ALIAS[model]
-        lines.append(macro(f"ExThree{alias}P", int(row["p"])))
-        lines.append(macro(f"ExThree{alias}Q", int(row["q"])))
-        lines.append(macro(f"ExThree{alias}Alpha", fmt3(row["garch_alpha"])))
-        lines.append(macro(f"ExThree{alias}Beta", fmt3(row["garch_beta"])))
-        lines.append(macro(f"ExThree{alias}Persistence", fmt3(row["persistence"])))
-        lines.append(macro(f"ExThree{alias}Aic", f"{float(row['auto_aic']):.2f}"))
-    lines.append(macro("ExThreeMaxArmaOrder", MAX_ARMA_ORDER))
-    lines.append(macro("ExThreeGarchP", GARCH_P))
-    lines.append(macro("ExThreeGarchQ", GARCH_Q))
-    lines.append(macro("ExThreeTestStart", "1998-03"))
-    lines.append(macro("ExThreeTestEnd", "2021-11"))
-    lines.append(macro("ExThreeTestN", int(metrics["n"].dropna().iloc[0])))
-    lines.append(command("ExThreeCombinedRows", combined_rows(combined)))
-    (EX3 / "13_ex3_report_macros.tex").write_text("\n".join(lines) + "\n", encoding="utf-8")
+        tag = ORDER_TAG[row["model"]]
+        out += [
+            macro(f"exThree{tag}P", int(row["p"])),
+            macro(f"exThree{tag}Q", int(row["q"])),
+            macro(f"exThree{tag}Aic", fmt2(row["auto_aic"])),
+            macro(f"exThree{tag}Omega", fmt3(row["garch_omega"])),
+            macro(f"exThree{tag}Alpha", fmt3(row["garch_alpha"])),
+            macro(f"exThree{tag}Beta", fmt3(row["garch_beta"])),
+            macro(f"exThree{tag}Persistence", fmt3(row["persistence"])),
+        ]
 
-
-def fmt3(value: object) -> str:
-    if pd.isna(value):
-        return ""
-    return f"{float(value):.3f}"
-
-
-def combined_rows(combined: pd.DataFrame) -> str:
-    keep = combined[
-        combined["model"].isin(
-            [
-                "NN",
-                "GP",
-                "LSTM",
-                "BaselineMean",
-                "BaselineMajority",
-                "ARMA-GARCH (plain)",
-                "ARMA-GARCH (YeoJohnson)",
+    for _, row in metrics.iterrows():
+        tag = ORDER_TAG[row["model"]]
+        target = TARGET_TAG[row["target"]]
+        if row["target"] in ("return", "price"):
+            out += [
+                macro(f"exThree{tag}{target}RMSE", fmt4(row["RMSE"])),
+                macro(f"exThree{tag}{target}NRMSE", fmt4(row["NRMSE"])),
+                macro(f"exThree{tag}{target}Pcorrect", fmt2(row["pcorrect"])),
             ]
-        )
-    ].copy()
-    target_order = {"return": 0, "price": 1, "direction": 2}
-    model_order = {
-        "NN": 0,
-        "GP": 1,
-        "LSTM": 2,
-        "BaselineMean": 3,
-        "BaselineMajority": 3,
-        "ARMA-GARCH (plain)": 4,
-        "ARMA-GARCH (YeoJohnson)": 5,
-    }
-    keep["target_order"] = keep["target"].map(target_order)
-    keep["model_order"] = keep["model"].map(model_order)
-    keep = keep.sort_values(["target_order", "model_order", "model"])
-    labels = {
-        "NN": "NN",
-        "GP": "GP",
-        "LSTM": "LSTM",
-        "BaselineMean": "BaselineMean",
-        "BaselineMajority": "BaselineMajority",
-        "ARMA-GARCH (plain)": "ARMA-GARCH (plain)",
-        "ARMA-GARCH (YeoJohnson)": "ARMA-GARCH (YeoJohnson)",
-    }
-    rows = []
-    previous_target = None
-    for _, row in keep.iterrows():
-        target = row["target"]
-        model = row["model"]
-        if previous_target in {"return", "price"} and target != previous_target:
-            rows.append(r"\midrule")
-        previous_target = target
-        rmse_value = fmt4(row.get("RMSE"))
-        nrmse_value = fmt4(row.get("NRMSE"))
-        pcorrect_value = fmt2(row.get("pcorrect"))
-        acc_value = fmt4(row.get("accuracy"))
-        mcc_value = fmt4(row.get("MCC"))
-        rows.append(
-            f"{target} & {labels[model]} & {rmse_value} & {nrmse_value} & "
-            f"{pcorrect_value} & {acc_value} & {mcc_value} \\\\"
-        )
-    return "\n".join(rows)
+        elif row["target"] == "direction":
+            out += [
+                macro(f"exThree{tag}{target}Accuracy", fmt4(row["accuracy"])),
+                macro(f"exThree{tag}{target}MCC", fmt4(row["MCC"])),
+            ]
+    return out
 
 
+# === Part 4: Orchestration ===================================================
 def main() -> None:
-    update_ex2_metrics()
-    update_ex3_metrics()
-    write_ex1_macros()
-    write_ex2_macros()
-    write_ex3_macros()
+    configure_logging()
+
+    ex1_sections = [
+        ("Exercise 1 (causality + volatility spillover)", emit_ex1_macros()),
+    ]
+    ex2_sections = [
+        ("Exercise 2 (NN / LSTM / GP forecasting)", emit_ex2_panel_macros()),
+        ("Exercise 2 - test-set metrics",          emit_ex2_metric_macros()),
+        ("Exercise 2 - feature selection",         emit_ex2_feature_macros()),
+        ("Exercise 2 - sensitivity ablations",     emit_ex2_sensitivity_macros()),
+    ]
+    ex3_sections = [
+        ("Exercise 3 (ARMA-GARCH baselines)",      emit_ex3_macros()),
+    ]
+
+    n1 = write_fragment(EX1_DIR / "22_ex1_report_macros.tex", ex1_sections)
+    n2 = write_fragment(EX2_DIR / "13_ex2_report_macros.tex", ex2_sections)
+    n3 = write_fragment(EX3_DIR / "13_ex3_report_macros.tex", ex3_sections)
+
+    for path, count in [
+        (EX1_DIR / "22_ex1_report_macros.tex", n1),
+        (EX2_DIR / "13_ex2_report_macros.tex", n2),
+        (EX3_DIR / "13_ex3_report_macros.tex", n3),
+    ]:
+        LOGGER.info("Wrote %d macros to %s", count, path.relative_to(PROJECT_ROOT))
+        print(f"Done. {count} macros written to {path.relative_to(PROJECT_ROOT)}")
 
 
 if __name__ == "__main__":

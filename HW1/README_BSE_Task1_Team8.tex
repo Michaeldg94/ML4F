@@ -1,0 +1,121 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=2.3cm]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{fourier}
+\usepackage{microtype}
+\usepackage{enumitem}
+\usepackage[dvipsnames]{xcolor}
+\usepackage[most]{tcolorbox}
+\usepackage[colorlinks=true,linkcolor=black,urlcolor=NavyBlue]{hyperref}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.5em}
+
+\newcommand{\code}[1]{\texttt{#1}}
+
+\title{\vspace{-1.5em}HW1:  README\\
+       \large ML for Finance (Prof. Arratia), BSE 2026}
+\author{Marco Canal \and Michael Duarte Gonçalves \and Olivia Peter}
+\date{15 May 2026}
+
+\begin{document}
+\maketitle
+
+\section*{Project layout}
+
+The full report is \code{solution.pdf} (from \code{solution.tex}). Code lives
+in \code{scripts/}. The committed \code{data/} folder contains the frozen
+\code{goyal-welch2022Monthly.csv} panel. We keep it under version control
+for reproducibility, so that Exercises 2 and 3 produce the same numbers
+without an internet round-trip. The \code{output/} folders (\code{ex1/},
+\code{ex2/}, \code{ex3/}) are created on demand by the scripts and hold
+every CSV, PDF figure and TeX fragment cited in the report.
+
+\section*{The four scripts}
+
+\textbf{\code{exercise\_01.py}} covers Exercise 1. It pulls daily prices
+for ten assets from Yahoo Finance over our team epoch (2024-01-01 to
+2025-12-31), aligns crypto to the NYSE calendar, computes log returns and
+RiskMetrics EWMA volatility ($\lambda=0.94$) at weekly and monthly
+frequency, then for every ordered pair selects the AIC-optimal VAR lag in
+$[1,5]$ and runs a Granger F-test at that lag. It produces the four
+causality tables and the four network plots in \code{output/ex1/}.
+
+\textbf{\code{exercise\_02.ipynb}} covers Exercise 2. It trains the NN,
+LSTM and GP grids on the Goyal-Welch panel (\code{dp}, \code{svar},
+\code{bm}, plus lags of the target) across the three target specifications,
+together with the drop-each-indicator sensitivity ablation. It writes to
+\code{output/ex2/}.
+
+\textbf{\code{exercise\_03.py}} covers Exercise 3. It fits the plain and
+Yeo-Johnson ARMA-GARCH baselines on the same chronological split as
+Exercise 2 and scores them on the same 285-observation test block, so the
+head-to-head table is apples-to-apples. It writes to \code{output/ex3/}.
+
+\section*{Running the pipeline end-to-end}
+
+From a fresh checkout, with Python 3.11 and a TeX Live install:
+
+\begin{enumerate}[leftmargin=*,itemsep=0.1em]
+\item \code{pip install -r requirements.txt}
+\item \code{python scripts/exercise\_01.py} (creates \code{output/ex1/})
+\item Run \code{scripts/exercise\_02.ipynb} (creates \code{output/ex2/}, see GPU note below)
+\item \code{python scripts/exercise\_03.py} (creates \code{output/ex3/})
+\end{enumerate}
+
+Measured wall-times. Each script logs its own wall time at the
+end of the run. The numbers below are from our last full run on one of
+the authors' laptops: an ASUS ROG Strix G18, Intel
+i9-14900HX (32 logical cores, 32~GB RAM, Ubuntu 24.04) with an
+NVIDIA RTX 4080 Laptop GPU (12~GB VRAM) used for the TensorFlow
+steps. They are indicative only: timings vary with CPU generation, disk
+speed, Yahoo Finance latency and the GPU on hand.
+
+\vspace{12pt}
+
+\begin{itemize}[leftmargin=*,itemsep=0.05em]
+\item[] \code{exercise\_01.py}: 3.7~s.
+\item[] \code{exercise\_02.ipynb}: 13.6~min end to end on the local
+      RTX 4080. For reference, the local GPU is generally faster than
+      Colab on these small NN and LSTM tensors. Per-cell wall times also
+      print via the \code{\%\%time}.
+\item[] \code{exercise\_03.py}: 7.0~s. (the \code{auto\_arima}
+      stepwise search and the GARCH MLE on the percent-scale residuals
+      dominate the runtime).
+\end{itemize}
+
+\begin{tcolorbox}[colback=NavyBlue!4,colframe=NavyBlue!70!black,
+                  title=\textbf{Note: running Exercise 2 (the GPU step)},
+                  fonttitle=\bfseries,boxrule=0.6pt,arc=2pt,
+                  left=6pt,right=6pt,top=4pt,bottom=4pt]
+
+The NN, LSTM and GP grids in \code{exercise\_02.ipynb} finish in a few
+minutes on a GPU and would take several hours on CPU. The path-setup
+cell auto-detects Colab vs.\ a local install.
+
+\textbf{Option A. Google Colab.} Upload \code{HW1/} to Drive at
+\code{MyDrive/ML4F\_HW1}, open the notebook from Drive in Colab,
+\emph{Runtime} $\rightarrow$ \emph{Change runtime type} $\rightarrow$
+select a T4 GPU, then \emph{Runtime} $\rightarrow$ \emph{Run all}.
+
+\vspace{12pt}
+
+\textbf{Option B. Local NVIDIA GPU.} The base \code{requirements.txt}
+pins plain \code{tensorflow}, which is enough for CPU. For GPU
+acceleration, layer the bundled CUDA wheels on top with
+\code{pip install --upgrade tensorflow[and-cuda]}. That pulls in
+\code{nvidia-cuda-runtime-cu12}, \code{nvidia-cublas-cu12},
+\code{nvidia-cudnn-cu12} and friends, so TF self-contains its runtime
+and no system toolkit is required.
+
+\end{tcolorbox}
+
+A small caveat on reproducibility: we fix \code{SEED=7} for NumPy,
+TensorFlow and PyTorch, but GPU kernels and cuDNN convolutions are not
+fully deterministic. NRMSE values can move in the third decimal place on
+a different machine. The report quotes four decimal places only where the
+ranking is robust to that level of jitter.
+
+\end{document}

@@ -1,27 +1,48 @@
 \begin{table}[H]
 \centering
 \small
-\begin{tabular}{llrrr}
+\begin{tabular}{llllllllll}
 \toprule
-Target & Dropped & NN & GP & LSTM \\
+target & model & params & RMSE & NRMSE & pcorrect & n & dropped & accuracy & MCC \\
 \midrule
-return & $-$ & 0.0701 & 0.0592 & 0.0629 \\
-return & dp & 0.0615 & 0.0592 & 0.0601 \\
-return & svar & 0.0615 & 0.0592 & 0.0601 \\
-return & bm & 0.0658 & 0.0592 & 0.0599 \\
-\midrule
-price & $-$ & 0.0466 & 0.0113 & 0.1770 \\
-price & dp & 0.0214 & 0.0135 & 0.1474 \\
-price & svar & 0.0378 & 0.0075 & 0.1357 \\
-price & bm & 0.0321 & 0.0067 & 0.1475 \\
-\midrule
-\multicolumn{5}{l}{direction is reported as accuracy} \\
-direction & $-$ & 0.6070 & 0.6246 & 0.6000 \\
-direction & dp & 0.6246 & 0.6246 & 0.6246 \\
-direction & svar & 0.6035 & 0.6246 & 0.6246 \\
-direction & bm & 0.6211 & 0.6246 & 0.6175 \\
+return & NN & {'hidden_layer_sizes': (128,), 'activation': 'tanh'} & 0.0592 & 0.0789 & 92.1093 & 285 & dp & NaN & NaN \\
+return & GP & {'kernel': 'RBF'} & 0.0445 & 0.0592 & 94.0765 & 285 & dp & NaN & NaN \\
+return & LSTM & {'units': 64, 'layers': 1, 'timesteps': 6} & 0.0480 & 0.0639 & 93.6058 & 285 & dp & NaN & NaN \\
+return & BaselineMean & {} & 0.0445 & 0.0593 & 94.0730 & 285 & dp & NaN & NaN \\
+price & NN & {'hidden_layer_sizes': (128, 64), 'activation': 'relu'} & 0.1500 & 0.0214 & 97.8637 & 285 & dp & NaN & NaN \\
+price & GP & {'kernel': 'custom_RBF+Lin'} & 0.0948 & 0.0135 & 98.6489 & 285 & dp & NaN & NaN \\
+price & LSTM & {'units': 64, 'layers': 1, 'timesteps': 6} & 1.0347 & 0.1474 & 85.2602 & 285 & dp & NaN & NaN \\
+price & BaselineMean & {} & 3.8198 & 0.5442 & 45.5840 & 285 & dp & NaN & NaN \\
+direction & NN & {'hidden_layer_sizes': (64,), 'activation': 'relu'} & NaN & NaN & NaN & 285 & dp & 0.6246 & 0.0000 \\
+direction & GP & {'kernel': 'RatQuad'} & NaN & NaN & NaN & 285 & dp & 0.6246 & 0.0000 \\
+direction & LSTM & {'units': 32, 'layers': 2, 'timesteps': 6} & NaN & NaN & NaN & 285 & dp & 0.6246 & 0.0000 \\
+direction & BaselineMajority & {} & NaN & NaN & NaN & 285 & dp & 0.6246 & 0.0000 \\
+return & NN & {'hidden_layer_sizes': (128,), 'activation': 'tanh'} & 0.0592 & 0.0789 & 92.1093 & 285 & svar & NaN & NaN \\
+return & GP & {'kernel': 'RBF'} & 0.0445 & 0.0592 & 94.0765 & 285 & svar & NaN & NaN \\
+return & LSTM & {'units': 64, 'layers': 1, 'timesteps': 6} & 0.0480 & 0.0639 & 93.6058 & 285 & svar & NaN & NaN \\
+return & BaselineMean & {} & 0.0445 & 0.0593 & 94.0730 & 285 & svar & NaN & NaN \\
+price & NN & {'hidden_layer_sizes': (64, 64), 'activation': 'relu'} & 0.2653 & 0.0378 & 96.2203 & 285 & svar & NaN & NaN \\
+price & GP & {'kernel': 'custom_RBF+Lin'} & 0.0530 & 0.0075 & 99.2450 & 285 & svar & NaN & NaN \\
+price & LSTM & {'units': 64, 'layers': 1, 'timesteps': 6} & 0.9526 & 0.1357 & 86.4292 & 285 & svar & NaN & NaN \\
+price & BaselineMean & {} & 3.8198 & 0.5442 & 45.5840 & 285 & svar & NaN & NaN \\
+direction & NN & {'hidden_layer_sizes': (64,), 'activation': 'relu'} & NaN & NaN & NaN & 285 & svar & 0.6035 & -0.0543 \\
+direction & GP & {'kernel': 'RatQuad'} & NaN & NaN & NaN & 285 & svar & 0.6246 & 0.0000 \\
+direction & LSTM & {'units': 32, 'layers': 1, 'timesteps': 6} & NaN & NaN & NaN & 285 & svar & 0.6246 & 0.0000 \\
+direction & BaselineMajority & {} & NaN & NaN & NaN & 285 & svar & 0.6246 & 0.0000 \\
+return & NN & {'hidden_layer_sizes': (128, 64), 'activation': 'tanh'} & 0.0494 & 0.0658 & 93.4221 & 285 & bm & NaN & NaN \\
+return & GP & {'kernel': 'RBF'} & 0.0445 & 0.0592 & 94.0765 & 285 & bm & NaN & NaN \\
+return & LSTM & {'units': 32, 'layers': 2, 'timesteps': 6} & 0.0450 & 0.0599 & 94.0082 & 285 & bm & NaN & NaN \\
+return & BaselineMean & {} & 0.0445 & 0.0593 & 94.0730 & 285 & bm & NaN & NaN \\
+price & NN & {'hidden_layer_sizes': (64, 64), 'activation': 'relu'} & 0.2253 & 0.0321 & 96.7907 & 285 & bm & NaN & NaN \\
+price & GP & {'kernel': 'custom_RBF+Lin'} & 0.0472 & 0.0067 & 99.3280 & 285 & bm & NaN & NaN \\
+price & LSTM & {'units': 64, 'layers': 1, 'timesteps': 6} & 1.0353 & 0.1475 & 85.2522 & 285 & bm & NaN & NaN \\
+price & BaselineMean & {} & 3.8198 & 0.5442 & 45.5840 & 285 & bm & NaN & NaN \\
+direction & NN & {'hidden_layer_sizes': (128,), 'activation': 'relu'} & NaN & NaN & NaN & 285 & bm & 0.6211 & 0.0257 \\
+direction & GP & {'kernel': 'custom_RBF+Lin'} & NaN & NaN & NaN & 285 & bm & 0.6246 & 0.0216 \\
+direction & LSTM & {'units': 32, 'layers': 1, 'timesteps': 6} & NaN & NaN & NaN & 285 & bm & 0.6175 & 0.0563 \\
+direction & BaselineMajority & {} & NaN & NaN & NaN & 285 & bm & 0.6246 & 0.0000 \\
 \bottomrule
 \end{tabular}
-\caption{Sensitivity analysis. Regression cells report NRMSE. Direction cells report accuracy. Each ablation removes all lags of the indicated predictor. \textit{Notes:} The row with $-$ keeps the full feature set. Each named row removes all lags of that predictor before feature selection and model refitting.}
+\caption{Sensitivity analysis: each row is the test-set performance when all lags of the indicated variable are removed from the feature set.}
 \label{tab:ex2_sensitivity}
 \end{table}

@@ -11,7 +11,7 @@ return & LSTM & {'units': 64, 'layers': 1, 'timesteps': 6} & 0.0472 & 0.0629 & 9
 return & BaselineMean & {} & 0.0445 & 0.0593 & 94.0730 & 285 & NaN & NaN & Ex 2 (NN/GP/LSTM) \\
 price & NN & {'hidden_layer_sizes': (64,), 'activation': 'relu'} & 0.3272 & 0.0466 & 95.3387 & 285 & NaN & NaN & Ex 2 (NN/GP/LSTM) \\
 price & GP & {'kernel': 'custom_RBF+Lin'} & 0.0795 & 0.0113 & 98.8677 & 285 & NaN & NaN & Ex 2 (NN/GP/LSTM) \\
-price & LSTM & {'units': 64, 'layers': 1, 'timesteps': 6} & 1.2423 & 0.1770 & 82.3031 & 285 & NaN & NaN & Ex 2 (NN/GP/LSTM) \\
+price & LSTM & {'units': 64, 'layers': 1, 'timesteps': 6} & 1.2423 & 0.1770 & 82.3029 & 285 & NaN & NaN & Ex 2 (NN/GP/LSTM) \\
 price & BaselineMean & {} & 3.8198 & 0.5442 & 45.5840 & 285 & NaN & NaN & Ex 2 (NN/GP/LSTM) \\
 direction & NN & {'hidden_layer_sizes': (128,), 'activation': 'tanh'} & NaN & NaN & NaN & 285 & 0.6070 & -0.0571 & Ex 2 (NN/GP/LSTM) \\
 direction & GP & {'kernel': 'RatQuad'} & NaN & NaN & NaN & 285 & 0.6246 & 0.0000 & Ex 2 (NN/GP/LSTM) \\
@@ -25,6 +25,6 @@ price & ARMA-GARCH (YeoJohnson) & ARMA(0,1); GARCH(1,1) alpha=0.121, beta=0.860,
 direction & ARMA-GARCH (YeoJohnson) & ARMA(0,1); GARCH(1,1) alpha=0.121, beta=0.860, alpha+beta=0.982 & NaN & NaN & NaN & 285 & 0.6246 & 0.0627 & Ex 3 (ARMA-GARCH) \\
 \bottomrule
 \end{tabular}
-\caption{Exercise 2 models and Exercise 3 ARMA-GARCH baselines.}
+\caption{Head-to-head comparison: Exercise 2 ML models versus Exercise 3 ARMA-GARCH baselines on the same chronological test split.}
 \label{tab:ex3_combined}
 \end{table}
