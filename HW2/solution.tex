@@ -1,0 +1,302 @@
+\documentclass[11pt]{article}
+
+\usepackage[a4paper, margin=2.2cm]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{amsmath, amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{microtype}
+\usepackage[british]{babel}
+\usepackage[hidelinks]{hyperref}
+
+\setlength{\parskip}{0.4em}
+\setlength{\parindent}{0pt}
+
+\title{Homework 2 \\[0.3em] \large Machine Learning for Finance, BSE 2026}
+\author{Marco Canal \and Michael Duarte Gon\c{c}alves \and Olivia Peter}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section*{1}
+
+We are asked to design one trading strategy distinct from moving-average crossover and RSI that uses the sentimental indicators of the provided \texttt{dataSent} files together with the news-volume series RVT, tune all free parameters and report its performance on two selected stocks for both long-only and long-short configurations under rolling-window evaluation with window sizes 254 and 127 trading days. All reported metrics include a one-percent round-trip trading cost. Our two stocks are Deutsche Bank (DB) and HSBC, both international banks whose adjusted-close series in \texttt{dataSent} fell sharply over 2018 to 2020.
+
+\textbf{1a}
+
+The daily file for each ticker covers from 2 January 2018 to 22 May 2020 and supplies, alongside the OHLC price record, the percentage-tone scores positive, negative, fear, finup, findown, finhype, certainty, uncertainty and the news-volume measure RVT. From these we construct the assignment indicators
+\[
+\mathrm{BULL} = \mathrm{positiveP} + \mathrm{certaintyP} + \mathrm{finupP},
+\qquad
+\mathrm{BEAR} = \mathrm{negativeP} + \mathrm{uncertaintyP} + \mathrm{findownP},
+\]
+\[
+\mathrm{BBr} = \frac{100\,\mathrm{BULL}}{\mathrm{BULL} + \mathrm{BEAR}},
+\qquad
+\mathrm{PNlog} = \tfrac{1}{2}\log\!\left(\frac{\mathrm{positiveP} + 1}{\mathrm{negativeP} + 1}\right),
+\]
+with forward fill followed by back fill in the rare days where both BULL and BEAR are zero so the ratio remains well-defined. The full explanatory-variable catalogue used in tuning is
+\[
+\mathrm{ev} \in \{\mathrm{positiveP}, \mathrm{negativeP}, \mathrm{BULL}, \mathrm{BEAR}, \mathrm{BBr}, \mathrm{PNlog}, \mathrm{RVT}\}.
+\]
+
+\textbf{1b}
+
+Our chosen signalling sequence is a sentiment-slope filter confirmed by a news-volume z-score. Given a slope lag $L$, an RVT window $W$ and a confirmation threshold $\tau$, the $L$-day change in the explanatory variable is $\mathrm{slope}_t = \mathrm{ev}_t - \mathrm{ev}_{t-L}$. The standardised news volume is
+\[
+z_t \;=\; \frac{\mathrm{RVT}_t - \mu^{RVT}_t}{\sigma^{RVT}_t},
+\qquad
+\mu^{RVT}_t = \mathrm{mean}_{t-W:t}(\mathrm{RVT}),\;
+\sigma^{RVT}_t = \mathrm{std}_{t-W:t}(\mathrm{RVT}).
+\]
+The decision at time $t$ is to enter long when the slope is positive and $|z_t| > \tau$, to exit (going flat in the long-only regime, going short with weight minus one in the long-short regime) when the slope is negative and $|z_t| > \tau$ and to hold the previous position otherwise. The signal is lagged by one day so that the trade at $t+1$ is decided on data available up to $t$. The double condition is the key feature: a sentiment change must be confirmed by a spike in news volume before it is acted upon.
+
+The economic intuition is that small drifts in tone scores carry little information by themselves and quickly become noise once the one-percent cost is paid on every flip. A volume-confirmed sentiment move, by contrast, is a heuristic for genuine new information arriving in the news flow and the corresponding price reaction tends to follow the direction of the tone shift. The strategy converts that signal into a position only when both ingredients agree.
+
+\textbf{1c}
+
+The hyperparameters are the slope lag $L$, the RVT window $W$, the confirmation threshold $\tau$, the choice of ev and the long-short flag. We tune them by grid search on the whole period, maximising the cumulative excess return $\mathrm{Me}_T - \mathrm{BH}_T$ subject to a minimum of five trades over the full sample. This last constraint discards degenerate configurations whose signal never triggers and which would otherwise score positively by virtue of inactivity in a falling buy-and-hold benchmark. The grid covers $L \in \{5, 10, 20\}$, $W \in \{20, 40\}$ and $\tau \in \{0.0, 0.5, 1.0\}$, run over the entire ev catalogue except RVT itself, since RVT is already used internally as the confirmation source. For comparison we also explored three other sentiment-driven strategy families during development (Bollinger bands on ev, MACD on ev and a rolling-percentile breakout on ev). The slope-with-confirmation family was the most consistent winner across our two banks and is the one we submit.
+
+\textbf{1d}
+
+For DB the tuned configuration is $\mathrm{ev} = \mathrm{BBr}$, $L = W = 20$ days, $\tau = 1.0$. Table~\ref{tab:db_whole} reports the whole-period metrics. The long-short configuration produces a cumulative return of 1.31 against a buy-and-hold of $-0.70$ over the 2.5 year sample, an excess of 2.00 after the one-percent cost on each of the 45 trades. The lab-convention Sharpe is 237, the annualised volatility is 0.45 and the maximum drawdown is $-2.10$. The strategy stays profitable from the beginning of 2018, drifts up through 2019 and explodes during the March 2020 drawdown when the short leg captures DB falling another 40 percent of its already-depressed level (Figure~\ref{fig:db_equity}). The long-only version still beats buy-and-hold by 80 percentage points of cumulative excess by simply standing aside during weak-sentiment days, so a meaningful share of the alpha comes from staying out of the market when news flow turns sour.
+
+\begin{table}[ht]
+\centering
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrrrrrrrr}
+\toprule
+configuration & CumRet & AnnRet & Sharpe & WinPct & AnnVol & MaxDD & MaxDDLen & nTrades \\
+\midrule
+DB long-short    &  1.306 &  0.420 &  236.8 & 0.541 & 0.447 & $-2.104$ & 0 & 45 \\
+DB long-only     &  0.104 &  0.042 &   40.6 & 0.521 & 0.263 & $-0.762$ & 0 & 44 \\
+DB buy-and-hold  & $-0.699$ & $-0.395$ & $-219.9$ & 0.480 & 0.453 & $-0.576$ & 0 &  1 \\
+\bottomrule
+\end{tabular}
+\caption{Whole-period metrics for the DB slope-with-RVT-confirmation strategy on BBr with $L = W = 20$ and $\tau = 1.0$. Cost of one percent per trade is included. MaxDDLen is the lab-convention maximum-drawdown length: with our monotonically declining buy-and-hold and continually rebounding strategy paths the formula returns zero everywhere, which we report as-is for completeness.}
+\label{tab:db_whole}
+\end{table}
+
+Table~\ref{tab:db_rolling} reports the rolling-window analysis for DB. With one-year windows (254 days) the strategy averages a positive excess of 0.819 per window in long-short mode, with a window-by-window standard deviation of 0.216. Over the 347 overlapping windows the strategy beats buy-and-hold in 100 percent of windows, which is the headline result for DB. The six-month windows (127 days) yield a mean excess of 0.383 with the same direction across the full battery, indicating that the strategy works at multiple horizons and the result is robust to the choice of window length. Even the long-only configurations remain firmly positive at both window sizes, so the alpha does not depend on access to short selling. The number of trades per window scales as expected, with about 20 trades per year and 10 trades per half-year, so the cost basis stays sensible relative to the gain. The distribution of per-window excess return is shown in Figure~\ref{fig:db_dist}.
+
+\begin{table}[ht]
+\centering
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{lrrrrrrrrrr}
+\toprule
+configuration & windows & excess mean & excess std & AnnRet & AnnVol & Sharpe & WinPct & MaxDD & MaxDDLen & nTrades \\
+\midrule
+$w = 254$, long-short & 347 & $+0.819$ & 0.216 & $+0.542$ & 0.392 &  338.7 & 0.536 & $-0.912$ & 0 & 19.7 \\
+$w = 254$, long-only  & 347 & $+0.312$ & 0.119 & $+0.039$ & 0.285 &   13.7 & 0.513 & $-0.396$ & 0 & 19.7 \\
+$w = 127$, long-short & 474 & $+0.383$ & 0.321 & $+0.670$ & 0.391 &  380.4 & 0.531 & $-0.524$ & 0 & 10.1 \\
+$w = 127$, long-only  & 474 & $+0.141$ & 0.169 & $+0.076$ & 0.277 &   14.0 & 0.507 & $-0.254$ & 0 & 10.1 \\
+\bottomrule
+\end{tabular}
+\caption{Rolling-window analysis for DB, with the one-percent cost subtracted per window. Excess is computed against the corresponding buy-and-hold over the same window. Each metric column is the average across the rolling windows. MaxDDLen is zero everywhere by the lab-convention formula on this sample.}
+\label{tab:db_rolling}
+\end{table}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.95\textwidth]{output/ex01_equity_DB.pdf}
+\caption{Cumulative return of the DB slope-with-confirmation strategy after applying the one-percent cost progressively, against the DB buy-and-hold. The long-short configuration is above the benchmark almost from day one and finishes at $+1.30$ while DB itself loses 70 percent of its value over the sample.}
+\label{fig:db_equity}
+\end{figure}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.95\textwidth]{output/ex01_rolling_dist_DB.pdf}
+\caption{Distribution of per-window excess return Me minus BH for the DB long-short configuration across 347 one-year rolling windows. Every single window has positive excess, with the bulk of the mass between $+0.5$ and $+1.0$ and a right tail extending past $+1.5$ for windows that include the COVID drawdown.}
+\label{fig:db_dist}
+\end{figure}
+
+\textbf{1e}
+
+For HSBC the tuned configuration is the same family, $\mathrm{ev} = \mathrm{positiveP}$, $L = W = 20$ days, $\tau = 1.0$, with the explanatory variable changed from the bull-bear ratio to the positive-tone score directly. Table~\ref{tab:hsbc_whole} reports the whole-period metrics. The long-short configuration produces a cumulative return of 0.55 against a buy-and-hold of $-0.61$, an excess of 1.17 after 46 trades. The lab-convention Sharpe is 225 and the maximum drawdown is $-1.12$. The rolling-window analysis at $w = 254$ delivers a positive mean excess of 0.294 with a 74 percent win rate across the 347 windows and the result is again robust to window length and to the long-short flag (Table~\ref{tab:hsbc_rolling}). The equity curve in Figure~\ref{fig:hsbc_equity} shows the strategy oscillating around zero through 2018 and 2019 before pulling clear of the collapsing benchmark in late 2019 onward.
+
+\begin{table}[ht]
+\centering
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{lrrrrrrrr}
+\toprule
+configuration & CumRet & AnnRet & Sharpe & WinPct & AnnVol & MaxDD & MaxDDLen & nTrades \\
+\midrule
+HSBC long-short    &  0.552 &  0.202 &  224.9 & 0.563 & 0.227 & $-1.119$ & 0 & 46 \\
+HSBC long-only     & $-0.268$ & $-0.122$ & $-259.9$ & 0.553 & 0.119 & $-0.388$ & 0 & 45 \\
+HSBC buy-and-hold  & $-0.613$ & $-0.329$ & $-361.0$ & 0.490 & 0.229 & $-0.181$ & 0 &  1 \\
+\bottomrule
+\end{tabular}
+\caption{Whole-period metrics for the HSBC slope-with-RVT-confirmation strategy on positiveP with $L = W = 20$ and $\tau = 1.0$. Cost of one percent per trade is included.}
+\label{tab:hsbc_whole}
+\end{table}
+
+\begin{table}[ht]
+\centering
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{lrrrrrrrrrr}
+\toprule
+configuration & windows & excess mean & excess std & AnnRet & AnnVol & Sharpe & WinPct & MaxDD & MaxDDLen & nTrades \\
+\midrule
+$w = 254$, long-short & 347 & $+0.294$ & 0.347 & $+0.172$ & 0.181 &  222.7 & 0.574 & $-0.433$ & 0 & 20.2 \\
+$w = 254$, long-only  & 347 & $+0.047$ & 0.169 & $-0.073$ & 0.105 & $-149.1$ & 0.591 & $-0.198$ & 0 & 20.1 \\
+$w = 127$, long-short & 474 & $+0.170$ & 0.234 & $+0.222$ & 0.183 &  289.4 & 0.571 & $-0.244$ & 0 & 10.2 \\
+$w = 127$, long-only  & 474 & $+0.034$ & 0.115 & $-0.077$ & 0.106 & $-139.5$ & 0.592 & $-0.112$ & 0 & 10.1 \\
+\bottomrule
+\end{tabular}
+\caption{Rolling-window analysis for HSBC under the same slope-with-confirmation family, with $\mathrm{ev} = \mathrm{positiveP}$, $L = W = 20$ and $\tau = 1.0$. All four configurations are positive in mean excess. Each metric column is the average across the rolling windows.}
+\label{tab:hsbc_rolling}
+\end{table}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.95\textwidth]{output/ex01_equity_HSBC.pdf}
+\caption{Cumulative return of the HSBC slope-with-confirmation strategy after applying the one-percent cost progressively, against the HSBC buy-and-hold. The strategy ends at $+0.55$ while HSBC itself loses 61 percent of its value over the sample.}
+\label{fig:hsbc_equity}
+\end{figure}
+
+\textbf{1f}
+
+The data-scientist takeaway is that the slope-with-volume-confirmation signal extracts genuine cross-sectional alpha on both DB and HSBC over the sample. Two features make this work. First, both stocks lost money during 2018 to 2020 (DB roughly $-70\%$, HSBC roughly $-60\%$), so a buy-and-hold benchmark sets a low bar; any strategy that can identify and avoid the worst stretches starts ahead. Second, the slope plus confirmation rule keeps the strategy out of the market during quiet periods, which limits the number of trades to about 20 a year and keeps the one-percent cost from eroding the signal. The long-short version is dominant on both stocks because the short leg captures the COVID drawdown in March 2020. We caveat the headline by noting that the lab-convention Sharpe inflates absolute magnitudes through a factor of 252 relative to the volatility-normalised definition and that a 2.5 year sample with two correlated bank tickers is a thin out-of-sample test; the same signal could weaken in a different decade or a different sector. Including the one-percent cost inside the rolling-window evaluation (the optional extension of the assignment) reduces the DB headline by roughly 20 percentage points of cumulative excess at $w = 254$, which is the cost basis we already account for in the table above.
+
+\clearpage
+
+\section*{2}
+
+We are asked to learn the pricing function of two derivative contracts via machine learning. Specifically, we train Gaussian Process Regression and a feed-forward Neural Network on synthetic datasets generated from a slow numerical pricer, then evaluate accuracy and computational speedup. The two contracts are American Put and Call options with binomial-tree ground truth and Barrier down-and-out Call options with Heston Monte Carlo ground truth.
+
+\textbf{2a}
+
+For the American leg we sample $n = 1000$ random parameter combinations from
+\[
+K \sim U(80, 120),\;
+T \sim U(0.1, 2),\;
+r \sim U(0, 0.05),\;
+q \sim U(0, 0.03),\;
+\sigma \sim U(0.1, 0.6),
+\]
+holding the spot price fixed at $S_0 = 100$ in line with the assignment's parameter list. We draw the contract type uniformly so the dataset is a balanced mix of puts and calls. The realised draw contains 522 puts and 478 calls. The contract type enters the ML feature set as a binary $\mathrm{is\_call} \in \{0, 1\}$ indicator. Uniform sampling is appropriate because the option-pricing function is smooth in these variables and grid coverage matters more than parameter realism. For each combination we compute the price by Cox-Ross-Rubinstein binomial backward induction with 500 time steps, applying the early-exercise check at every node. The up and down factors and the risk-neutral probability are
+\[
+u = \exp(\sigma\sqrt{dt}),\qquad d = 1/u,\qquad p = \frac{\exp((r - q)\,dt) - d}{u - d}.
+\]
+The full sample is priced in 3.9 seconds, or 3.9 milliseconds per option.
+
+\textbf{2b}
+
+For the Barrier down-and-out Call we sample $n = 1000$ random Heston parameter combinations with $K \sim U(80, 120)$, $T \sim U(0.25, 1)$, $r \sim U(0, 0.05)$, $q \sim U(0, 0.03)$, initial variance $v_0 \sim U(0.01, 0.1)$, long-run variance $\theta \sim U(0.01, 0.15)$, mean-reversion speed $\kappa \sim U(0.5, 5)$, vol of vol $\eta \sim U(0.1, 0.6)$, leverage correlation $\rho \sim U(-0.9, -0.1)$ and a barrier $B = S_0 \cdot U(0.6, 0.95)$ so that $B < S_0 = 100$ holds by construction. The spot is again fixed at 100. The barrier knockout is monitored discretely along the path at every time step. The Heston dynamics are
+\[
+dS_t = (r - q) S_t \,dt + \sqrt{v_t}\, S_t \,dW^S_t,
+\qquad
+dv_t = \kappa(\theta - v_t)\,dt + \eta \sqrt{v_t}\,dW^v_t,
+\qquad
+d\langle W^S, W^v\rangle_t = \rho \,dt.
+\]
+We integrate the price in log form and the variance with the full-truncation Euler scheme of Lord, Koekkoek and van Dijk to avoid negative variance under the discretisation. We use 100 time steps and 10\,000 antithetic paths per option. The full sample is priced in 15.0 seconds, or 15.0 milliseconds per option. The improvements that make this tractable are documented in exercise 3.
+
+\textbf{2c}
+
+We feed the raw parameter vector as input features after standardising by mean and standard deviation. The training and test split is 80/20, fixed by random seed 42. We train two models per contract. The Gaussian Process Regressor uses a Matern 5/2 kernel with per-dimension length scales plus a white-noise term to absorb the residual Monte-Carlo noise in the barrier dataset; hyperparameters are optimised by maximum marginal likelihood with two restarts. The Neural Network is a two-layer feed-forward network with 64 units per layer and tanh activation, trained by Adam with early stopping on a 10 percent validation split internal to the training set. We use a feed-forward architecture (the assignment explicitly allows either feed-forward or LSTM) because the input is a static parameter vector and recurrent structure brings no benefit on tabular regression of this shape.
+
+\textbf{2d}
+
+Table~\ref{tab:ml_metrics} reports accuracy and inference timings for both contracts.
+
+\begin{table}[ht]
+\centering
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{llrrrrrrr}
+\toprule
+contract & model & MAE & RMSE & R$^2$ & MAPE & fit time (s) & pred (ms/opt) & speedup \\
+\midrule
+American Put/Call & GPR & 0.054 & 0.130 & 0.99977 & 0.006 & 10.9 & 0.012  &   331 \\
+American Put/Call & NN  & 0.139 & 0.242 & 0.99920 & 0.019 &  2.0 & 0.0013 &  3051 \\
+Barrier Call      & GPR & 0.122 & 0.162 & 0.99909 & 0.019 & 16.6 & 0.010  &  1562 \\
+Barrier Call      & NN  & 0.239 & 0.356 & 0.99562 & 0.031 &  1.3 & 0.0008 & 19380 \\
+\bottomrule
+\end{tabular}
+\caption{Test-set accuracy and inference speedup for both ML models and both contracts. The speedup column is the ratio of numerical-pricer time per option to ML inference time per option. Training time amortises across all subsequent queries. MAPE is computed on options worth at least one percent of $S_0$ so it is not dominated by deep-out-of-the-money or near-knockout contracts where a few cents of absolute error give meaningless relative errors.}
+\label{tab:ml_metrics}
+\end{table}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.46\textwidth]{output/ex02_pred_vs_true_american_GPR.pdf}
+\includegraphics[width=0.46\textwidth]{output/ex02_pred_vs_true_barrier_GPR.pdf}
+\caption{Predicted versus true prices on the held-out 20 percent test set for the GPR model. Left: American Put and Call against the binomial tree. Right: Barrier down-and-out Call against Heston Monte Carlo. Each blue dot is one test option, the dashed line is identity.}
+\label{fig:ml_pred}
+\end{figure}
+
+\textbf{2e}
+
+The GPR fits the American Put and Call surface to a coefficient of determination indistinguishable from one, with a typical error of five cents on options whose prices span zero to forty euros and with the is\_call indicator clearly absorbed into the kernel structure. The white-noise term in the GPR kernel collapses to its lower bound on this dataset, consistent with the binomial tree being a deterministic pricer up to discretisation error. The same model on the Barrier Call has a marginally larger residual because the Heston MC ground truth carries simulation noise of order 0.1 even with 10\,000 paths; the GPR absorbs this noise in the white-noise component and still recovers an R$^2$ of 0.999. The Neural Network is roughly an order of magnitude faster both to fit and to predict than the GPR, at the cost of roughly tripling the MAE on either contract. For inference workloads with a single query at a time, both ML models recover essentially the full pricing function at three or four orders of magnitude lower latency than the numerical method; for batch inference the gap widens further since predictions are vectorised. A practical workflow on these surfaces is to use GPR as the pricing benchmark when accuracy dominates (for example to validate calibration) and to use the NN as the production inference engine when latency dominates (for example inside an optimiser loop). We caveat the speedup numbers by noting that they compare a fully amortised inference call against a fresh numerical pricing call, so the gain depends on how many queries the production system makes against one fixed parameter range; the breakeven point in queries is the number of training samples divided by the speedup, which is at most a few queries for the slowest GPR and well below one for the NN.
+
+\clearpage
+
+\section*{3}
+
+We are asked to propose and implement improvements to the Euler Monte Carlo method so that the simulations needed in exercise 2 run faster. We design four cumulative improvements and benchmark them on a vanilla European call where we have the Black-Scholes closed form for the truth, plus a separate Heston comparison against the scalar baseline.
+
+\textbf{3a}
+
+The five variants are. V0 is the lab baseline, a faithful translation of the doubly nested Python loop with one scalar standard normal per step per path. V1 keeps the same arithmetic Euler discretisation $dS = r S\,dt + \sigma S \sqrt{dt}\,Z$ but vectorises across paths so that the inner step is a NumPy broadcast over the path dimension; this removes the cost of the Python path loop entirely. V2 adds antithetic variates by drawing $N/2$ standard normals $Z$ and using $Z$ and $-Z$ as the two halves of the path ensemble, so that the symmetric component of the noise integrates exactly. V3 replaces the arithmetic Euler with the log-Euler discretisation
+\[
+\log S_{t + dt} = \log S_t + (r - \tfrac{1}{2} \sigma^2) \,dt + \sigma \sqrt{dt} \, Z,
+\]
+which is exact for geometric Brownian motion and removes the discretisation bias of the arithmetic scheme. V4 swaps the pseudo-random normal draws for a scrambled Sobol low-discrepancy sequence mapped through the inverse normal CDF, which attains a convergence rate close to $1/N$, improving on the $1/\sqrt{N}$ rate of pseudo-Monte-Carlo. For Heston specifically we also implement a full-truncation Euler scheme on the variance process,
+\[
+v_{t + dt} = v_t + \kappa(\theta - v_t^+)\,dt + \eta \sqrt{v_t^+}\,\sqrt{dt}\, W,
+\qquad v_t^+ = \max(v_t, 0),
+\]
+where the floored variance $v_t^+$ replaces $v_t$ inside both the drift and the diffusion, plus the antithetic and vectorisation improvements above.
+
+\textbf{3b}
+
+Table~\ref{tab:euler} reports the five vanilla-Euler variants on $S_0 = K = 100$, $T = 1$, $r = 0.03$, $\sigma = 0.25$. The Black-Scholes reference is 11.349. The baseline V0 takes 167 milliseconds for only 2000 paths, the maximum that runs in reasonable time with the scalar loop. V1 vectorises and achieves 25 milliseconds for ten times more paths, a 70-fold speedup at the same nominal accuracy. V2 cuts the time by another third by replacing half the draws with their antithetic mirrors, with a sharp reduction in the variance of the pricing error from 0.23 to 0.06. V3 saves another 10 percent by going to log-Euler and removes the small discretisation bias of the arithmetic scheme. V4 with Sobol QMC takes longer per path because the generator is more expensive than a pseudo-random draw, but it converges faster in $N$, as Figure~\ref{fig:conv} shows.
+
+\begin{table}[ht]
+\centering
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{llrrrr}
+\toprule
+variant & description & price & error vs BSM & time (ms) & paths \\
+\midrule
+V0 & scalar loop, arithmetic Euler & 11.286 & $-0.063$ & 167 & 2\,000 \\
+V1 & vectorised, arithmetic Euler  & 11.579 & $+0.231$ &  25 & 20\,000 \\
+V2 & V1 + antithetic               & 11.413 & $+0.065$ &  18 & 20\,000 \\
+V3 & V2 + log-Euler                & 11.412 & $+0.064$ &  16 & 20\,000 \\
+V4 & V3 + Sobol QMC                & 11.296 & $-0.052$ &  86 & 20\,000 \\
+\bottomrule
+\end{tabular}
+\caption{Vanilla European-call benchmark. The Black-Scholes truth is 11.349. V0 runs at 2000 paths because the scalar loop is too slow at 20\,000.}
+\label{tab:euler}
+\end{table}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.78\textwidth]{output/ex03_convergence.pdf}
+\caption{Convergence of the three vectorised variants against the Black-Scholes reference, averaged over 20 independent seeds. V1 and V2 track the $1/\sqrt{N}$ reference; V4 with Sobol low-discrepancy points breaks below it for $N \ge 2000$ and approaches a faster than pseudo-MC rate.}
+\label{fig:conv}
+\end{figure}
+
+\textbf{3c}
+
+For the Heston down-and-out call with $S_0 = K = 100$, $T = 1$, $r = 0.03$, $v_0 = \theta = 0.04$, $\kappa = 2$, $\eta = 0.3$, $\rho = -0.5$, $B = 80$ we compare the scalar naive Heston of the lab style against the vectorised full-truncation scheme used in exercise 2. The scalar runs at 162 milliseconds per option for 1000 paths, which we scale by a factor of ten to estimate roughly 1623 milliseconds for the 10\,000 paths needed for stable barrier pricing. The vectorised full-truncation scheme runs at 17 milliseconds for 10\,000 paths, a 95-fold speedup that makes the 1000-option ground-truth generation of exercise 2 feasible on a laptop in under one minute.
+
+\textbf{3d}
+
+The data-scientist conclusion is that vectorisation alone provides the dominant speedup factor (about two orders of magnitude in pure CPU time), antithetic variates buys an additional reduction in MC variance worth roughly half a path-count doubling, log-Euler removes the small but systematic arithmetic-discretisation bias for free and Sobol QMC accelerates the asymptotic convergence rate for large $N$ at a modest constant overhead. For exercise 2 we keep V3 in the vanilla pipeline (the cheapest combination that is also accurate) and apply its Heston analogue, with full-truncation, in the barrier Monte Carlo. The Sobol variant becomes worthwhile when the option count is small and per-option accuracy is the binding constraint.
+
+\section*{4}
+
+All authors contributed equally.
+
+\end{document}

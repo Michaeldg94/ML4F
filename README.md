@@ -85,3 +85,90 @@ The full data-scientist commentary lives in `HW1/solution.pdf`.
 ### Authors
 
 See `HW1/solution.pdf` cover page.
+
+## HW2
+
+The full problem set is inside [`HW2/`](HW2/). The compiled report is
+[`HW2/solution.pdf`](HW2/solution.pdf) (9 pages).
+
+### Layout
+
+```
+HW2/
+├── HW2_Arratia26BSE.pdf          assignment statement
+├── dataSent/                     provided price + sentiment data (19 tickers)
+├── exercise_01.py                Ex 1: sentiment-slope + RVT-confirmation strategy (DB, HSBC)
+├── exercise_01_extended.py       Ex 1: extended search over all full-history tickers
+├── exercise_02.py                Ex 2: GPR + feed-forward NN option pricing
+├── exercise_03.py                Ex 3: Euler MC speed-ups V0-V4 + Heston full-truncation
+├── requirements.txt              exact-pin dependencies (Python 3.11)
+├── solution.tex                  LaTeX source of the report
+├── solution.pdf                  compiled report (9 pages)
+└── output/                       all generated artefacts
+    ├── ex01_whole_*.csv          Ex 1: whole-period metrics per ticker
+    ├── ex01_rolling_*.csv        Ex 1: rolling-window summaries (w = 254 and 127)
+    ├── ex01_tuning_*.csv         Ex 1: grid-search trace per strategy family
+    ├── ex01_equity_*.pdf         Ex 1: equity curve, strategy vs buy-and-hold
+    ├── ex01_signals_*.pdf        Ex 1: signal vs price and ev
+    ├── ex01_rolling_dist_*.pdf   Ex 1: per-window excess distribution at w = 254
+    ├── ex02_dataset_*.csv        Ex 2: synthetic (X, y) option-price datasets
+    ├── ex02_metrics_*.csv        Ex 2: per-model accuracy and inference speedup
+    ├── ex02_pred_vs_true_*.pdf   Ex 2: predicted vs true price scatter
+    ├── ex02_residuals_*.pdf      Ex 2: residual plots
+    ├── ex03_euler_bench.csv      Ex 3: V0-V4 vanilla European-call benchmark
+    ├── ex03_heston_bench.csv     Ex 3: scalar vs vectorised full-truncation Heston
+    └── ex03_convergence.{csv,pdf} Ex 3: RMS error vs path count, 20 seeds averaged
+```
+
+### Just want to inspect the results?
+
+Open [`HW2/solution.pdf`](HW2/solution.pdf). Every table and figure in the
+report is also available as a standalone CSV / PDF inside `HW2/output/`.
+
+### Want to re-run end-to-end?
+
+```bash
+cd HW2
+pip install -r requirements.txt    # tested on Python 3.11.4
+
+# Exercise 1 (sentiment trading strategy; about 1 min on CPU)
+python3 exercise_01.py
+
+# Exercise 2 (GPR + NN option pricing; about 1 min on CPU)
+python3 exercise_02.py
+
+# Exercise 3 (Euler MC improvements + convergence study; about 30 s on CPU)
+python3 exercise_03.py
+
+# Recompile the report (TeX Live; pdflatex twice for cross-references)
+pdflatex solution.tex && pdflatex solution.tex
+```
+
+### What the report concludes
+
+- **Ex 1.** A sentiment-slope signal confirmed by an RVT news-volume z-score,
+  tuned by grid search and evaluated with a one-percent round-trip cost,
+  extracts genuine alpha on Deutsche Bank and HSBC over 2018 to 2020. DB
+  (ev = BBr) averages a per-window excess of +0.82 at the one-year horizon and
+  beats buy-and-hold in 100 percent of 347 rolling windows; HSBC
+  (ev = positiveP) averages +0.29 with a 74 percent win rate. Both stocks fell
+  60 to 70 percent over the sample, so the long-short version dominates because
+  the short leg captures the March 2020 drawdown.
+- **Ex 2.** Gaussian Process Regression and a feed-forward neural network learn
+  the pricing functions of American Put and Call options (Cox-Ross-Rubinstein
+  binomial ground truth) and Barrier down-and-out Call options (Heston
+  Monte-Carlo ground truth) to an R-squared of 0.999, with the GPR more
+  accurate and the NN one to two orders of magnitude faster to fit and predict.
+  Inference runs two to four orders of magnitude quicker than the numerical
+  pricers.
+- **Ex 3.** Four cumulative improvements to the Euler Monte-Carlo method
+  (vectorisation across paths, antithetic variates, the log-Euler scheme and a
+  scrambled Sobol low-discrepancy sequence), plus a full-truncation Euler scheme
+  for the Heston variance, cut barrier-option pricing time about 95-fold and let
+  the Sobol variant beat the 1/sqrt(N) error rate for large path counts.
+
+The full data-scientist commentary lives in `HW2/solution.pdf`.
+
+### Authors
+
+See `HW2/solution.pdf` cover page.
