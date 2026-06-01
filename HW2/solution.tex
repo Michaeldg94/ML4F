@@ -12,10 +12,14 @@
 \usepackage{microtype}
 \usepackage[british]{babel}
 \usepackage{caption}
+\usepackage{placeins}
 \usepackage{enumitem}
-\definecolor{navy}{RGB}{0,0,128}
+% A medium blue for \ref/\hyperref links: clearly visible in print, not the
+% near-black of navy.
+\definecolor{linkblue}{RGB}{0,102,204}
 \usepackage{hyperref}
-\hypersetup{colorlinks=true, linkcolor=navy, citecolor=navy, urlcolor=navy}
+\hypersetup{colorlinks=true, linkcolor=linkblue, citecolor=linkblue,
+  urlcolor=linkblue}
 
 \setlength{\parskip}{0.4em}
 \setlength{\parindent}{0pt}
@@ -161,7 +165,13 @@ explanation:
   values reported below are non-zero.
 \end{enumerate}
 
-\subsection{Deutsche Bank}
+\subsection{In-sample results}
+Deutsche Bank and HSBC are tuned and evaluated the same way, so we report them
+together. The whole-period and rolling tables below are the in-sample
+selection, scored on the same period we tuned on; the out-of-sample check is the
+walk-forward of Section~\ref{sec:walkforward}.
+
+\paragraph{Deutsche Bank.}
 The tuned configuration is $\ev=\mathrm{BBr}$, $L=W=20$ days, $\tau=1.0$.
 Table~\ref{tab:db_whole} gives the whole-period metrics. In long-short form the
 strategy returns a cumulative $\DBlsCumRet$ against a buy-and-hold of
@@ -171,10 +181,7 @@ scaling, its annualised volatility $\DBlsAnnVol$ and its worst drawdown
 $\DBlsMaxDD$ lasting $\DBlsDDLen$ trading days. The long-only version still
 beats buy-and-hold by $\DBloExcessPts$ points of cumulative
 return, just by standing aside on weak-sentiment days. So a good part of the
-edge is staying out when the news turns bad, not the short leg alone. The equity
-curve in Figure~\ref{fig:db_equity} sits above the benchmark almost from the
-start and pulls away during the March~2020 sell-off, when the short leg profits
-from DB falling further.
+edge is staying out when the news turns bad, not the short leg alone.
 
 \begin{table}[ht]
 \centering
@@ -189,15 +196,8 @@ DB long-only    &  0.104 &  0.042 &   40.6 & 0.521 & 0.263 & $-0.262$ & 258 & 44
 DB buy-and-hold & $-0.699$ & $-0.395$ & $-219.9$ & 0.480 & 0.453 & $-1.071$ & 586 & 1 \\
 \bottomrule
 \end{tabular}
-\caption{Whole-period metrics for the DB slope-with-RVT-confirmation strategy
-on BBr with $L=W=20$ and $\tau=1.0$, net of the 1\% cost. CumRet is the
-cumulative return and AnnRet the annualised return. Sharpe is an annualised
-return over daily volatility times $\sqrt{252}$, inflated by $252$ over the
-conventional ratio, so it is read as a ranking. WinPct is the
-fraction of positive daily returns,
-AnnVol the annualised volatility, MaxDD the worst peak-to-trough drop of the
-cumulative-return path, DDLen its length in trading days and nTrades the number
-of trades (position changes).}
+\caption{Whole-period DB metrics for the long-short and long-only rules against
+buy-and-hold (BBr, $L=W=20$, $\tau=1.0$), net of the 1\% cost.}
 \label{tab:db_whole}
 \end{table}
 
@@ -232,37 +232,24 @@ $w{=}127$, long-short & 474 & $+0.383$ & 0.321 & $+0.670$ & 0.391 & 380.4 & 0.53
 $w{=}127$, long-only  & 474 & $+0.141$ & 0.169 & $+0.076$ & 0.277 & 14.0 & 0.507 & 0.814 & $-0.160$ & 64.9 \\
 \bottomrule
 \end{tabular}
-\caption{Rolling-window analysis for DB, 1\% cost subtracted per window. windows
-is the number of rolling windows, exc.\ mean and exc.\ std the mean and standard
-deviation of the per-window excess $\Me-\BH$, and ExcessWin the fraction of
-windows with positive excess. The remaining columns are window-averages of the
-quantities defined in Table~\ref{tab:db_whole}. The chosen configuration
-averages about $20$ trades per year.}
+\caption{DB rolling-window metrics at one-year and six-month windows, 1\% cost
+per window; the long-short rule beats buy-and-hold in every one-year window.}
 \label{tab:db_rolling}
 \end{table}
 
-\begin{figure}[ht]
-\centering
-\includegraphics[width=0.92\textwidth]{ex1/figures/01_equity_DB.pdf}
-\caption{Cumulative return of the DB slope-with-confirmation strategy with the
-1\% cost applied progressively, against DB buy-and-hold. The long-short
-configuration finishes near $+\DBlsCumRet$ while DB itself loses about
-$\DBbhLossPct\%$ over the
-sample.}
-\label{fig:db_equity}
-\end{figure}
+% End page 3 on the Deutsche Bank tables, then open the next page with the
+% full-size histogram capping the DB discussion ahead of the HSBC paragraph.
+\clearpage
 
-\begin{figure}[ht]
+\begin{figure}[t]
 \centering
 \includegraphics[width=0.92\textwidth]{ex1/figures/02_rolling_dist_DB.pdf}
-\caption{Per-window excess return $\Me-\BH$ for the DB long-short configuration
-across the $\DBrollWindows$ one-year rolling windows. Every window is positive, with most
-of the mass between $+0.5$ and $+1.0$ and a right tail past $+1.5$ for windows
-that include the March~2020 drawdown.}
+\caption{DB long-short per-window excess $\Me-\BH$ over the one-year rolling
+windows; every window is positive, with a right tail from the March~2020 drawdown.}
 \label{fig:db_dist}
 \end{figure}
 
-\subsection{HSBC}
+\paragraph{HSBC.}
 The tuned configuration is the same family with $\ev=\mathrm{positiveP}$,
 $L=W=20$ and $\tau=1.0$. Only the explanatory variable changes, from the
 bull-bear ratio to the positive-tone score. Table~\ref{tab:hsbc_whole} reports
@@ -274,9 +261,7 @@ $\HSrollExcessMean$ at one-year windows with a $\HSrollWinPct\%$ win rate,
 again steady across window length and the long-short flag. The six-month
 long-only case shows how the two win measures can diverge. It wins on most days
 (WinPct $\HSloWinPct$) yet clears buy-and-hold in under half the windows
-(ExcessWin $\HSloExcessWin$). The equity curve
-(Figure~\ref{fig:hsbc_equity}) drifts around the benchmark through 2018 and
-2019, then pulls clear as HSBC collapses in early 2020.
+(ExcessWin $\HSloExcessWin$).
 
 \begin{table}[ht]
 \centering
@@ -291,9 +276,8 @@ HSBC long-only    & $-0.268$ & $-0.122$ & $-259.9$ & 0.553 & 0.119 & $-0.151$ & 
 HSBC buy-and-hold & $-0.613$ & $-0.329$ & $-361.0$ & 0.490 & 0.229 & $-0.674$ & 591 & 1 \\
 \bottomrule
 \end{tabular}
-\caption{Whole-period metrics for the HSBC strategy on positiveP with
-$L=W=20$ and $\tau=1.0$, net of the 1\% cost. Columns as in
-Table~\ref{tab:db_whole}.}
+\caption{Whole-period HSBC metrics (positiveP, $L=W=20$, $\tau=1.0$), net of the
+1\% cost; columns as in Table~\ref{tab:db_whole}.}
 \label{tab:hsbc_whole}
 \end{table}
 
@@ -311,21 +295,42 @@ $w{=}127$, long-short & 474 & $+0.170$ & 0.234 & $+0.222$ & 0.183 & 289.4 & 0.57
 $w{=}127$, long-only  & 474 & $+0.034$ & 0.115 & $-0.077$ & 0.106 & $-139.5$ & 0.592 & 0.473 & $-0.064$ & 63.6 \\
 \bottomrule
 \end{tabular}
-\caption{Rolling-window analysis for HSBC under the same family with
-$\ev=\mathrm{positiveP}$. Columns as in Table~\ref{tab:db_rolling}. All four
-configurations are positive in mean excess.}
+\caption{HSBC rolling-window metrics; all four configurations are positive in
+mean excess. Columns as in Table~\ref{tab:db_rolling}.}
 \label{tab:hsbc_rolling}
 \end{table}
 
+\paragraph{Comparison.}
+The two equity curves (Figures~\ref{fig:db_equity} and~\ref{fig:hsbc_equity})
+tell the same story, with DB the stronger case. Both strategies clear a falling
+benchmark after costs: DB finishes near $+\DBlsCumRet$ against an own loss of
+about $\DBbhLossPct\%$ and HSBC ends near $+\HSlsCumRet$ against about
+$\HSbhLossPct\%$, excesses of $\DBlsExcess$ and $\HSlsExcess$. The DB curve sits
+above its benchmark almost from the start and pulls away during the March~2020
+sell-off, when the short leg profits from DB falling further. The HSBC curve
+drifts around its benchmark through 2018 and 2019, then pulls clear as HSBC
+collapses in early 2020. In both the edge comes mostly from sidestepping the
+worst stretches and shorting into them, which is why the curves separate most
+sharply in the COVID quarter.
+
+% Both equity curves share one float so the DB and HSBC strategies stay on the
+% same page, read as a pair; the \FloatBarrier below then holds every Section 1
+% exhibit ahead of the walk-forward test.
 \begin{figure}[ht]
 \centering
+\includegraphics[width=0.92\textwidth]{ex1/figures/01_equity_DB.pdf}
+\caption{DB cumulative return, strategy versus buy-and-hold with the 1\% cost
+applied progressively; the long-short rule ends near $+\DBlsCumRet$.}
+\label{fig:db_equity}
+
+\vspace{1.5em}
 \includegraphics[width=0.92\textwidth]{ex1/figures/01_equity_HSBC.pdf}
-\caption{Cumulative return of the HSBC strategy with the 1\% cost applied
-progressively, against HSBC buy-and-hold. The strategy ends near $+\HSlsCumRet$
-while HSBC loses about $\HSbhLossPct\%$ over the sample.}
+\caption{HSBC cumulative return, strategy versus buy-and-hold with the 1\% cost
+applied progressively; the strategy ends near $+\HSlsCumRet$.}
 \label{fig:hsbc_equity}
 \end{figure}
 
+\FloatBarrier
 \subsection{Walk-forward validation}\label{sec:walkforward}
 The rolling tables still pick the rule with hindsight, because the grid is
 scored on the whole sample. A stricter and more realistic test is walk-forward,
@@ -376,15 +381,9 @@ HSBC & 2019 Q4 & Pctile/positiveP & 0.40 & $-0.14$ & 4 \\
 HSBC & 2020 Q1 & Slope/positiveP  & 0.27 & $+0.72$ & 2 \\
 \bottomrule
 \end{tabular}
-\caption{Walk-forward out-of-sample test. The rule is tuned on the preceding one
-year (train exc. is its excess there), frozen, and scored on the next
-three-month test quarter (test exc., the excess $\Me-\BH$ after the 1\% cost).
-``tuned rule'' is the family and explanatory variable the grid selected on the
-training window, always long-short, where Boll, Pctile and Slope are the
-Bollinger, percentile and slope-with-confirmation families. DB averages
-$+\DBwfMean$ test excess and is positive in four of five quarters, HSBC averages
-$+\HSwfMean$ and
-is positive in two of five, both leaning on the March 2020 quarter.}
+\caption{Walk-forward out-of-sample test: each rule is tuned on the prior year
+and frozen, then scored on the next quarter (test exc., excess after the 1\%
+cost); both banks lean on the March~2020 quarter.}
 \label{tab:walkforward}
 \end{table}
 
@@ -528,15 +527,9 @@ Barrier Call      & GPR & 0.122 & 0.162 & 0.99909 & 0.019 & 95.9 & 0.017  &  1{,
 Barrier Call      & NN  & 0.239 & 0.356 & 0.99562 & 0.031 &  2.1 & 0.0015 & 12{,}736 &   109 \\
 \bottomrule
 \end{tabular}
-\caption{Test-set accuracy and inference timing for both contracts. MAE and
-RMSE are the mean absolute and root mean square price errors, $R^2$ the
-coefficient of determination and MAPE the mean absolute percentage error. ``fit''
-is the one-off training time. ``pred'' is the prediction time in milliseconds
-per option. ``speedup'' is the numerical per-option time divided by the ML
-prediction time. ``break-even'' is the number of priced options at which the
-training cost is repaid (Section~2e). The numerical per-option times are
-$\AmNumMs$~ms (American) and $\BaNumMs$~ms (Barrier). MAPE is computed on options worth
-at least $1\%$ of $S_0$ so a few near-zero contracts do not dominate it.}
+\caption{Test-set accuracy (MAE, RMSE, $R^2$, MAPE) and timing for the GPR and NN
+surrogates on each contract, with speedup over the numerical pricer and the
+break-even query count.}
 \label{tab:ml_metrics}
 \end{table}
 
@@ -544,9 +537,8 @@ at least $1\%$ of $S_0$ so a few near-zero contracts do not dominate it.}
 \centering
 \includegraphics[width=0.46\textwidth]{ex2/figures/01_pred_vs_true_american_GPR.pdf}
 \includegraphics[width=0.46\textwidth]{ex2/figures/01_pred_vs_true_barrier_GPR.pdf}
-\caption{Predicted versus true prices on the held-out test set for the GPR
-model. Left: American Put and Call against the binomial tree. Right: Barrier
-down-and-out Call against Heston Monte Carlo. The dashed line is the identity.}
+\caption{Predicted versus true test-set prices for the GPR model: American
+(left) and Barrier down-and-out Call (right); the dashed line is the identity.}
 \label{fig:ml_pred}
 \end{figure}
 
@@ -586,9 +578,8 @@ NN  & put ($90$)  & 0.130 & 0.188 & 0.99949 \\
 NN  & call ($110$) & 0.146 & 0.279 & 0.99899 \\
 \bottomrule
 \end{tabular}
-\captionof{table}{American errors split by put and call on the test set
-(subset sizes in brackets). MAE, RMSE and $R^2$ as in
-Table~\ref{tab:ml_metrics}.}
+\captionof{table}{American GPR and NN test errors split by put and call (subset
+sizes in brackets).}
 \label{tab:putcall}
 \end{minipage}\hfill
 \begin{minipage}[t]{0.49\textwidth}
@@ -604,9 +595,8 @@ Barrier  & GPR & 0\%   & n/a   & 0\% \\
 Barrier  & NN  & 1.5\% & n/a   & 0\% \\
 \bottomrule
 \end{tabular}
-\captionof{table}{Fraction of test predictions violating non-negativity,
-the intrinsic-value floor (American only) and the upper bound ($S_0$ for calls,
-$K$ for puts).}
+\captionof{table}{Share of test predictions violating non-negativity, the
+intrinsic-value floor (American) and the upper price bound.}
 \label{tab:noarb}
 \end{minipage}
 \end{table}
@@ -621,11 +611,8 @@ dataset & mean MC SE & 90th-pct SE & GPR MAE \\
 Barrier Heston labels & 0.083 & 0.137 & 0.122 \\
 \bottomrule
 \end{tabular}
-\caption{Monte Carlo noise of the barrier labels. mean MC SE is the average
-antithetic standard error across the $1000$ barrier options, 90th-pct SE its
-90th percentile and GPR MAE the GPR test error on the same contracts. The model
-error is of the same order as the label noise, so most of the GPR residual is
-simulation noise rather than model bias.}
+\caption{Monte Carlo noise of the barrier labels: mean and 90th-percentile
+antithetic standard error against the GPR test MAE, which sits at the noise floor.}
 \label{tab:mc_se}
 \end{table}
 
@@ -738,19 +725,18 @@ V3 & V2 + log-Euler                & 11.412 & $+0.064$ &  20 & 20{,}000 \\
 V4 & V3 + Sobol QMC                & 11.296 & $-0.052$ & 195 & 20{,}000 \\
 \bottomrule
 \end{tabular}
-\caption{Vanilla European-call benchmark. Black-Scholes truth $\BSMref$. V0 runs
-at $2{,}000$ paths because the scalar loop is too slow at $20{,}000$. Prices and
-errors are reproducible from the fixed seed. Timings are from the benchmarking
-machine.}
+\caption{Vanilla European-call benchmark for the five variants against the
+Black-Scholes truth $\BSMref$; V0 runs at fewer paths because the scalar loop is
+slow.}
 \label{tab:euler}
 \end{table}
 
 \begin{figure}[h]
 \centering
 \includegraphics[width=0.74\textwidth]{ex3/figures/01_convergence.pdf}
-\caption{Convergence of the vectorised variants against Black-Scholes, averaged
-over $20$ seeds. V1 and V2 track the $1/\sqrt{N}$ reference. The scrambled Sobol
-variant V4 breaks below it for larger $N$.}
+\caption{RMS pricing error of the vectorised variants versus path count $N$,
+averaged over $20$ seeds; scrambled Sobol (V4) breaks below the $1/\sqrt{N}$
+reference.}
 \label{fig:conv}
 \end{figure}
 
