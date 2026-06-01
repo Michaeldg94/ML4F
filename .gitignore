@@ -26,3 +26,12 @@ venv/
 # Editor / IDE
 .vscode/
 .idea/
+
+# Claude Code and agent tooling (local config, hooks, skills, not submitted)
+.claude/
+.agents/
+skills-lock.json
+
+# Secrets
+.env
+*.local.env

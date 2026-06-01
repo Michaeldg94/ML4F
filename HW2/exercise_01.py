@@ -1,118 +1,83 @@
-# =============================================================================
-# exercise_01.py
-# HW2 ex 1: Backtesting trading strategies on sentiment indicators
-#
-# Team:    Marco Canal, Michael Duarte Goncalves, Olivia Peter
-# Date:    2026-05-22
-#
-# PURPOSE:
-#   Design and backtest ONE trading strategy different from MAcross and RSI
-#   that uses the sentimental indicators
-#   ev in {positiveP, negativeP, BULL, BEAR, BBr, PNlog} and RVT for two
-#   selected stocks (DB and HSBC) over the period covered by the dataSent
-#   files. The strategy is built and evaluated on both long-only and
-#   long-short configurations using rolling-window analysis with window
-#   sizes 254 (one year) and 127 (six months). Trading cost is fixed at
-#   1 percent. We explore four candidate sentiment-driven strategies
-#   (Bollinger bands, MACD, rolling-percentile breakout, sentiment-slope
-#   confirmed by news volume), tune their hyperparameters on the whole
-#   period, run the full rolling-window battery on each, and identify the
-#   configurations whose mean excess return Me minus BH is positive.
-#
-# INPUTS:
-#   dataSent/DB.csv
-#   dataSent/HSBC.csv
-#
-# OUTPUTS:
-#   output/ex01_whole_<TICKER>.csv         (whole-period performance per strategy)
-#   output/ex01_rolling_<TICKER>.csv       (rolling-window mean/std performance)
-#   output/ex01_tuning_<TICKER>.csv        (grid-search trace per strategy)
-#   output/ex01_rolling_windows_<TICKER>.csv (per-window raw data for the chosen config)
-#   output/ex01_summary.csv                (final summary of successful configs)
-#   output/ex01_signals_<TICKER>.pdf       (chosen strategy signal vs price)
-#   output/ex01_equity_<TICKER>.pdf        (chosen strategy equity vs BH)
-#   output/ex01_rolling_dist_<TICKER>.pdf  (per-window excess distribution at w=254)
-#
-# STRUCTURE:
-#   Part 1: Imports, paths, constants
-#   Part 2: Performance and backtest engines (whole period and rolling window)
-#   Part 3: Sentiment indicator construction
-#   Part 4: Strategy library (four candidate signal generators)
-#   Part 5: Tuning loop on the whole period
-#   Part 6: Rolling-window evaluation of tuned configurations
-#   Part 7: Reporting (summary CSV, figures)
-# =============================================================================
+"""HW2 Exercise 1 — Backtesting sentiment-based trading strategies.
 
-# =============================================================================
-# Part 1: Imports, paths, constants
-# =============================================================================
+Designs one signal that is neither MA-crossover nor RSI (a sentiment slope
+confirmed by a news-volume z-score), tunes it on DB and HSBC and evaluates
+long-only and long-short variants over 254- and 127-day rolling windows,
+always net of the 1% trading cost. Three further sentiment families
+(Bollinger, MACD, rolling-percentile) are tuned alongside it for context.
+All outputs land in output/ex1/.
 
-import ast                             # safe literal parsing for params strings
-import itertools                       # cartesian products for grid search
-from pathlib import Path               # path handling without absolute paths
+Authors: Marco Canal, Michael Duarte Gonçalves, Olivia Peter.
+"""
 
-import numpy as np                     # numerical arrays
-import pandas as pd                    # tabular data
-import matplotlib.pyplot as plt        # plotting
+import ast
+import itertools
+from pathlib import Path
 
-SEED = 42                              # reproducibility for any random op
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+SEED = 42
 np.random.seed(SEED)
 
 ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT / "dataSent"
-OUT_DIR = ROOT / "output"
-OUT_DIR.mkdir(parents=True, exist_ok=True)
+OUT_DIR = ROOT / "output" / "ex1"        # exercise-1 outputs live here
+FIG_DIR = OUT_DIR / "figures"            # plots, numbered within this folder
+TAB_DIR = OUT_DIR / "tables"             # CSVs, numbered within this folder
+for _d in (FIG_DIR, TAB_DIR):
+    _d.mkdir(parents=True, exist_ok=True)
 
-TICKERS = ["DB", "HSBC"]               # our two selected stocks
-TCOST = 0.01                           # 1 percent trading cost as required
-WINDOW_SIZES = [254, 127]              # one year and six months of daily data
-LONGSHORT_SETTINGS = [0, -1]           # 0 = long-only, -1 = long-short
+TICKERS = ["DB", "HSBC"]               # our two selected international banks
+TCOST = 0.01                           # 1% trading cost, fixed by the brief
+WINDOW_SIZES = [254, 127]              # one year and six months
+LONGSHORT_SETTINGS = [0, -1]           # exit weight: 0 = long-only, -1 = short
 
-# Universal sets used everywhere
 EV_NAMES = ["positiveP", "negativeP", "BULL", "BEAR", "BBr", "PNlog", "RVT"]
 STRATEGY_NAMES = ["BollingerSent", "MACDSent", "PctileSent", "SlopeRVT"]
 
-# =============================================================================
-# Part 2: Performance and backtest engines
-# =============================================================================
-# We mirror the conventions of PyLab6_TradingStrategywCost: simple daily
-# returns, cumulative return via cumsum, transaction cost subtracted at the
-# end as ntrades * cost, drawdowns computed on the cumulative-return path.
+# --- Performance and backtest engines ---------------------------------------
+# Mirrors PyLab6_TradingStrategywCost, with one fix: its drawdown-length
+# formula returned zero everywhere, so we use the textbook peak-to-trough one.
+
+
+def _max_drawdown(cum):
+    """Worst peak-to-trough loss of a cumulative path, and its longest run."""
+    if len(cum) == 0:
+        return np.nan, 0
+    underwater = cum - np.maximum.accumulate(cum)
+    max_dd = float(underwater.min())
+    # longest underwater run, via the pad-and-diff islands trick
+    under = (underwater < 0).astype(int)
+    edges = np.diff(np.concatenate(([0], under, [0])))
+    starts = np.where(edges == 1)[0]
+    ends = np.where(edges == -1)[0]
+    max_len = int((ends - starts).max()) if len(starts) else 0
+    return max_dd, max_len
+
 
 def performance(x, ntrades=1, cost=0.0):
-    """Performance summary of a daily-return series.
+    """Eight performance metrics for a daily-return series, net of the cost.
 
-    Parameters
-    ----------
-    x : pd.Series
-        Daily simple returns of the strategy or benchmark.
-    ntrades : int
-        Number of trades executed by the strategy (not used for BH).
-    cost : float
-        Per-trade transaction cost (subtracted as ntrades * cost from the
-        cumulative return, matching the lab convention).
-
-    Returns
-    -------
-    pd.Series with the eight metrics used in the course.
+    Sharpe follows the lab convention (annualised return over daily
+    volatility, times sqrt(252)), so it runs large.
     """
     x = pd.Series(x).dropna()
-    cumRet = np.cumsum(x.values, axis=0) - ntrades * cost
-    # Floor cumRet at -0.999 to avoid taking a fractional power of a negative
-    # base when a degenerate strategy's losses exceed -100 percent.
-    cum_final = max(float(cumRet[-1]), -0.999)
-    annRet = (np.power(cum_final + 1, 252.0 / len(x)) - 1)
+    cum = np.cumsum(x.values) - ntrades * cost
+    # floor at -0.999 so the annualisation power never roots a negative base
+    cum_final = max(float(cum[-1]), -0.999)
+    ann_ret = np.power(cum_final + 1, 252.0 / len(x)) - 1
     sd = np.std(x.values, ddof=1) if len(x) > 1 else np.nan
-    sharpe = annRet / sd * np.sqrt(252) if sd and sd > 0 else np.nan
+    ann_vol = sd * np.sqrt(252)
+    sharpe_lab = ann_ret / sd * np.sqrt(252) if sd and sd > 0 else np.nan
     nz = np.count_nonzero(x.values)
-    winpct = np.count_nonzero(x.values > 0) / nz if nz > 0 else np.nan
-    annSD = sd * np.sqrt(252) if sd is not np.nan else np.nan
-    DDs = np.minimum.accumulate(cumRet) - cumRet
-    maxDD = DDs.min() if len(DDs) else np.nan
-    maxLen = int((cumRet == DDs).argmax()) if len(DDs) else 0
+    win_pct = np.count_nonzero(x.values > 0) / nz if nz > 0 else np.nan
+    max_dd, max_len = _max_drawdown(cum)
 
     return pd.Series(
-        [cumRet[-1], annRet, sharpe, winpct, annSD, maxDD, maxLen, ntrades],
+        [cum[-1], ann_ret, sharpe_lab, win_pct,
+         ann_vol, max_dd, max_len, ntrades],
         index=["CumRet", "AnnRet", "Sharpe", "WinPct",
                "AnnVol", "MaxDD", "MaxDDLen", "nTrades"],
         name=x.name,
@@ -120,17 +85,15 @@ def performance(x, ntrades=1, cost=0.0):
 
 
 def count_trades(sig):
-    """Number of position changes in the signal series (zero-crossings of diff)."""
+    """Count position changes in the signal (nonzero first differences)."""
     s = pd.Series(sig).fillna(0)
     return int((s.diff().fillna(0) != 0).sum())
 
 
 def test_strategy_whole(price, sig, tcost=TCOST):
-    """Whole-period backtest. Signal is assumed already shifted by one day.
+    """Whole-period backtest of an already-lagged signal.
 
-    Returns a DataFrame with two columns Me and BH containing the daily
-    return of the strategy and the buy-and-hold benchmark, plus a Series
-    of performance metrics for each.
+    Returns the (Me, BH) daily returns and a performance table for each.
     """
     bh = (price / price.shift(1) - 1).rename("BH")
     me = (bh * sig).rename("Me")
@@ -146,13 +109,10 @@ def test_strategy_whole(price, sig, tcost=TCOST):
 
 
 def rolling_test_strategy(price, sig, w_size=254, tcost=TCOST):
-    """Rolling-window backtest. Returns a DataFrame whose rows are the
-    averaged (and std-d) metrics across all rolling windows.
+    """Rolling-window backtest.
 
-    Trading cost is applied per-window as nTrades_window * tcost, matching
-    the whole-period convention. The function counts trades only inside
-    each window so per-window cost is realistic. This implements the
-    optional extension requested by the assignment.
+    Returns the per-window metrics and their mean and std across windows,
+    with the cost charged per window from the trades inside it.
     """
     bh = (price / price.shift(1) - 1).rename("BH")
     me = (bh * sig).rename("Me")
@@ -179,14 +139,10 @@ def rolling_test_strategy(price, sig, w_size=254, tcost=TCOST):
     return rw, summary
 
 
-# =============================================================================
-# Part 3: Sentiment indicator construction
-# =============================================================================
+# --- Sentiment indicator construction ---------------------------------------
 
 def load_panel(ticker):
-    """Load a dataSent CSV and return a DataFrame indexed by Date with float
-    columns. Drops the unnamed integer index from the file and any optional
-    downloadedDate column that appears in a subset of the files."""
+    """Load a dataSent CSV as a float DataFrame indexed by Date."""
     fp = DATA_DIR / f"{ticker}.csv"
     raw = pd.read_csv(fp)
     raw = raw.drop(columns=[c for c in ["Unnamed: 0", "downloadedDate"]
@@ -198,11 +154,8 @@ def load_panel(ticker):
 
 
 def build_ev_catalogue(panel):
-    """Build the seven explanatory-variable series used by all strategies.
-    Formulas follow the assignment statement exactly: BULL and BEAR are
-    plain sums (no 0.33 scaling), BBr is the percentage ratio with
-    interpolation on division-by-zero days, PNlog is the log positive-to-
-    negative ratio. RVT is taken as-is."""
+    """Build the seven explanatory-variable series, following the assignment
+    formulas (BULL/BEAR sums, BBr ratio, PNlog log-ratio, RVT as-is)."""
     pos = panel["positivePartscr"].rename("positiveP")
     neg = panel["negativePartscr"].rename("negativeP")
     cert = panel["certaintyPartscr"]
@@ -214,26 +167,22 @@ def build_ev_catalogue(panel):
     bear = (neg + unc + findn).rename("BEAR")
     bb_sum = (bull + bear).replace(0.0, np.nan)
     bbr = (100.0 * bull / bb_sum).rename("BBr")
-    # ffill then bfill to interpolate the rare BULL=BEAR=0 days
-    bbr = bbr.ffill().bfill()
+    # forward fill the rare BULL=BEAR=0 days (no back fill, to avoid leakage)
+    bbr = bbr.ffill()
     pnlog = (0.5 * np.log((pos + 1.0) / (neg + 1.0))).rename("PNlog")
     rvt = panel["RVT"].rename("RVT")
     return {"positiveP": pos, "negativeP": neg, "BULL": bull, "BEAR": bear,
             "BBr": bbr, "PNlog": pnlog, "RVT": rvt}
 
 
-# =============================================================================
-# Part 4: Strategy library
-# =============================================================================
-# Each signal generator returns a pd.Series of {-1, 0, 1} aligned to the
-# input ev (and shifted by one day so that decisions are executed next-day,
-# matching the lab convention). The position is held between triggers so
-# the strategy is not whipsawed by tiny indicator wiggles.
+# --- Strategy library --------------------------------------------------------
+# Each generator returns a {-1, 0, 1} signal, lagged one day and held between
+# triggers so tiny indicator wiggles do not whipsaw the position.
 
 def _build_signal_from_decisions(decisions, longshort, index):
-    """Forward-fill discrete decisions into a continuous signal in {-1, 0, 1},
-    then lag by one day. Decisions before the first trigger are filled with
-    zero (out of the market). longshort selects -1 for short, 0 for flat."""
+    """Forward-fill discrete decisions into a lagged {-1, 0, 1} signal.
+
+    Days before the first trigger are flat. longshort is the exit weight."""
     sig = pd.Series(np.nan, index=index)
     sig[decisions == "long"] = 1
     sig[decisions == "exit"] = longshort
@@ -327,22 +276,16 @@ def make_signal(strategy, params, ev, rvt, longshort):
     raise ValueError(f"unknown strategy {strategy}")
 
 
-# =============================================================================
-# Part 5: Tuning loop on the whole period
-# =============================================================================
+# --- Whole-period tuning -----------------------------------------------------
 
 MIN_TRADES_WHOLE = 5  # discard degenerate "almost never trade" configurations
 
 
 def tune_strategy(price, ev, rvt, strategy, longshort, tcost=TCOST,
                   min_trades=MIN_TRADES_WHOLE):
-    """Grid-search the hyperparameters of one strategy by maximising the
-    excess cumulative return Me_CumRet - BH_CumRet on the whole period,
-    subject to the minimum-trades constraint. A do-nothing signal that
-    happens to land above BH by chance is rejected since it is not a
-    strategy in any meaningful sense. Returns the grid trace and the best
-    (params, score, perf) tuple, or (None, -inf, None) if no candidate
-    clears the minimum-trades floor."""
+    """Grid-search a strategy's hyperparameters for the best whole-period
+    excess (Me - BH), subject to the minimum-trades floor. Returns the grid
+    trace and the best (params, score, perf), or (None, -inf, None)."""
     rows = []
     best = (None, -np.inf, None)
     for params in GRIDS[strategy]:
@@ -372,9 +315,7 @@ def tune_strategy(price, ev, rvt, strategy, longshort, tcost=TCOST,
     return pd.DataFrame(rows), best
 
 
-# =============================================================================
-# Part 6: Rolling-window evaluation of tuned configurations
-# =============================================================================
+# --- Rolling-window evaluation of tuned configurations -----------------------
 
 def evaluate_rolling(price, ev, rvt, strategy, params, longshort,
                      w_size=254, tcost=TCOST):
@@ -385,9 +326,7 @@ def evaluate_rolling(price, ev, rvt, strategy, params, longshort,
     return rw, summary, sig
 
 
-# =============================================================================
-# Part 7: Driver
-# =============================================================================
+# --- Driver ------------------------------------------------------------------
 
 def run_ticker(ticker):
     """Full pipeline for one ticker. Returns four DataFrames covering the
@@ -435,12 +374,12 @@ def run_ticker(ticker):
                 # 2) rolling-window evaluation for both window sizes
                 for w in WINDOW_SIZES:
                     try:
-                        rw_w, rsum, _ = evaluate_rolling(price, ev, rvt, strategy,
-                                                         params, ls, w_size=w)
+                        rw_w, rsum, _ = evaluate_rolling(
+                            price, ev, rvt, strategy, params, ls, w_size=w)
                     except ValueError:
                         continue
                     # True per-window excess (Me - BH). Its standard deviation
-                    # accounts for the Me/BH covariance, unlike a quadrature sum
+                    # captures the Me/BH covariance, not a quadrature sum
                     # of the two separate standard deviations.
                     excess_per_window = rw_w["Me_CumRet"] - rw_w["BH_CumRet"]
                     rolling_rows.append({
@@ -451,6 +390,7 @@ def run_ticker(ticker):
                         "BH_CumRet_mean": rsum.loc["BH_CumRet", "mean"],
                         "excess_mean": excess_per_window.mean(),
                         "excess_std": excess_per_window.std(),
+                        "excess_win": (excess_per_window > 0).mean(),
                         "Me_Sharpe_mean": rsum.loc["Me_Sharpe", "mean"],
                         "Me_AnnRet_mean": rsum.loc["Me_AnnRet", "mean"],
                         "Me_AnnVol_mean": rsum.loc["Me_AnnVol", "mean"],
@@ -478,10 +418,8 @@ def pick_best_rolling(rolling_df, ticker, w_size, longshort):
 
 
 def plot_diagnostics(ticker, price, ev_dict, rvt, best_cfg):
-    """Produce three diagnostic figures for the chosen configuration:
-    (i) signal vs price and ev, (ii) cumulative return of strategy vs BH,
-    (iii) rolling-window distribution of per-window excess Me - BH at the
-    primary window size (254). Also save per-window CSV for that window."""
+    """Save the chosen config's three figures (signal, equity curve, per-window
+    excess distribution) and the per-window CSV."""
     strategy = best_cfg["strategy"]
     ev_name = best_cfg["ev"]
     ls = int(best_cfg["longshort"])
@@ -508,7 +446,7 @@ def plot_diagnostics(ticker, price, ev_dict, rvt, best_cfg):
     ax[1].set_yticks([-1, 0, 1])
     ax[1].set_xlabel("date")
     fig.tight_layout()
-    fig.savefig(OUT_DIR / f"ex01_signals_{ticker}.pdf", bbox_inches="tight")
+    fig.savefig(FIG_DIR / f"03_signals_{ticker}.pdf", bbox_inches="tight")
     plt.close(fig)
 
     sig_aligned = sig.reindex(ret.index)
@@ -527,13 +465,13 @@ def plot_diagnostics(ticker, price, ev_dict, rvt, best_cfg):
     ax.set_ylabel("cumulative return")
     ax.legend()
     fig.tight_layout()
-    fig.savefig(OUT_DIR / f"ex01_equity_{ticker}.pdf", bbox_inches="tight")
+    fig.savefig(FIG_DIR / f"01_equity_{ticker}.pdf", bbox_inches="tight")
     plt.close(fig)
 
     # Per-window distribution at w=254
     rw, _ = rolling_test_strategy(price, sig, w_size=254, tcost=TCOST)
     rw["excess"] = rw["Me_CumRet"] - rw["BH_CumRet"]
-    rw.to_csv(OUT_DIR / f"ex01_rolling_windows_{ticker}.csv", index=False)
+    rw.to_csv(TAB_DIR / f"03_rolling_windows_{ticker}.csv", index=False)
     fig, ax = plt.subplots(figsize=(10, 5))
     ax.hist(rw["excess"], bins=40, color="tab:blue", alpha=0.7,
             edgecolor="black", linewidth=0.4)
@@ -548,18 +486,66 @@ def plot_diagnostics(ticker, price, ev_dict, rvt, best_cfg):
     ax.set_ylabel("number of rolling windows")
     ax.legend()
     fig.tight_layout()
-    fig.savefig(OUT_DIR / f"ex01_rolling_dist_{ticker}.pdf", bbox_inches="tight")
+    fig.savefig(FIG_DIR / f"02_rolling_dist_{ticker}.pdf",
+                bbox_inches="tight")
     plt.close(fig)
+
+
+# --- Walk-forward out-of-sample validation -----------------------------------
+
+def walk_forward(price, ev_dict, rvt, train_len=254, test_len=63):
+    """Tune on each training window, then score the tuned rule on the next,
+    unseen test window, and roll forward. Genuinely out-of-sample: each test
+    window's parameters are chosen without seeing it."""
+    bh = (price / price.shift(1) - 1).rename("BH")
+    candidates = []
+    for strategy in STRATEGY_NAMES:
+        for ev_name in EV_NAMES:
+            if strategy == "SlopeRVT" and ev_name == "RVT":
+                continue
+            for ls in LONGSHORT_SETTINGS:
+                for params in GRIDS[strategy]:
+                    sig = make_signal(strategy, params, ev_dict[ev_name],
+                                      rvt, ls)
+                    candidates.append(((strategy, ev_name, ls, params), sig))
+
+    def window_excess(sig, idx):
+        me = (bh * sig).reindex(idx).dropna()
+        bh_w = bh.reindex(idx).dropna()
+        nt = count_trades(sig.reindex(idx))
+        pm = performance(me.rename("Me"), ntrades=nt, cost=TCOST)
+        pb = performance(bh_w.rename("BH"), ntrades=1, cost=0.0)
+        return pm["CumRet"] - pb["CumRet"], int(nt)
+
+    rows = []
+    idx = price.index
+    start = 0
+    while start + train_len + test_len <= len(idx):
+        tr_idx = idx[start:start + train_len]
+        te_idx = idx[start + train_len:start + train_len + test_len]
+        best = (None, -np.inf, None)
+        for label, sig in candidates:
+            exc_tr, nt_tr = window_excess(sig, tr_idx)
+            if nt_tr >= 3 and exc_tr > best[1]:
+                best = (label, exc_tr, sig)
+        exc_te, nt_te = window_excess(best[2], te_idx)
+        rows.append({"test_start": str(te_idx[0].date()),
+                     "test_end": str(te_idx[-1].date()),
+                     "chosen": str(best[0]), "train_excess": best[1],
+                     "test_excess": exc_te, "test_nTrades": nt_te})
+        start += test_len
+    return pd.DataFrame(rows)
 
 
 def main():
     all_tuning, all_whole, all_rolling = [], [], []
     cache = {}
     for ticker in TICKERS:
-        tuning_df, whole_df, rolling_df, price, ev_dict, rvt = run_ticker(ticker)
-        tuning_df.to_csv(OUT_DIR / f"ex01_tuning_{ticker}.csv", index=False)
-        whole_df.to_csv(OUT_DIR / f"ex01_whole_{ticker}.csv", index=False)
-        rolling_df.to_csv(OUT_DIR / f"ex01_rolling_{ticker}.csv", index=False)
+        (tuning_df, whole_df, rolling_df,
+         price, ev_dict, rvt) = run_ticker(ticker)
+        tuning_df.to_csv(TAB_DIR / f"04_tuning_{ticker}.csv", index=False)
+        whole_df.to_csv(TAB_DIR / f"01_whole_{ticker}.csv", index=False)
+        rolling_df.to_csv(TAB_DIR / f"02_rolling_{ticker}.csv", index=False)
         all_tuning.append(tuning_df)
         all_whole.append(whole_df)
         all_rolling.append(rolling_df)
@@ -576,8 +562,8 @@ def main():
     successful = successful.sort_values(
         ["ticker", "w_size", "longshort", "excess_mean"],
         ascending=[True, True, True, False]).reset_index(drop=True)
-    successful.to_csv(OUT_DIR / "ex01_summary.csv", index=False)
-    print(f"\nTotal rolling configs with positive mean excess: {len(successful)}")
+    successful.to_csv(TAB_DIR / "05_summary.csv", index=False)
+    print(f"\nRolling configs with positive mean excess: {len(successful)}")
     print("Top configurations per (ticker, w_size, longshort):")
     top = (successful.groupby(["ticker", "w_size", "longshort"])
                      .head(1)
@@ -586,12 +572,8 @@ def main():
                "params", "excess_mean", "Me_Sharpe_mean",
                "Me_nTrades_mean"]].to_string(index=False))
 
-    # Pick a single representative configuration per ticker for plotting:
-    # the long-short w_size = 254 configuration with the highest mean excess
-    # subject to a minimum of one trade per window on average. We plot the
-    # best aggressive attempt regardless of sign so that the reader sees how
-    # the strategy actually behaves; for tickers without positive excess
-    # this still produces a real strategy, not a near-BH degenerate.
+    # Plot the best long-short, w=254 config per ticker (most mean excess,
+    # at least one trade per window on average).
     for ticker in TICKERS:
         sub = big_rolling[(big_rolling["ticker"] == ticker)
                           & (big_rolling["w_size"] == 254)
@@ -607,6 +589,19 @@ def main():
         print(f"  saved diagnostics for {ticker}: "
               f"{cfg['strategy']}/{cfg['ev']}/{cfg['params']} "
               f"excess_mean={sign}{cfg['excess_mean']:.4f}")
+
+    # Walk-forward out-of-sample check per ticker.
+    wf_all = []
+    for ticker in TICKERS:
+        price, ev_dict, rvt = cache[ticker]
+        wf = walk_forward(price, ev_dict, rvt)
+        wf.insert(0, "ticker", ticker)
+        wf_all.append(wf)
+        print(f"  {ticker} walk-forward: mean test excess "
+              f"{wf['test_excess'].mean():+.3f}, positive in "
+              f"{(wf['test_excess'] > 0).mean():.0%} of {len(wf)} windows")
+    pd.concat(wf_all, ignore_index=True).to_csv(
+        TAB_DIR / "06_walkforward.csv", index=False)
 
 
 if __name__ == "__main__":
