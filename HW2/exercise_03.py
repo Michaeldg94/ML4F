@@ -1,4 +1,4 @@
-"""HW2 Exercise 3 — Faster Euler Monte Carlo.
+"""HW2 Exercise 3: Faster Euler Monte Carlo.
 
 Four cumulative speedups over the lab's loop-based Euler MC, benchmarked on a
 vanilla European call against the Black-Scholes truth:

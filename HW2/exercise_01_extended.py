@@ -1,4 +1,4 @@
-"""HW2 Exercise 1 (extended) — wider sentiment-strategy exploration.
+"""HW2 Exercise 1 (extended): wider sentiment-strategy exploration.
 
 Reuses the exercise_01 engine and adds three signal families (z-score mean
 reversion, rate-of-change momentum, stochastic oscillator), then sweeps all

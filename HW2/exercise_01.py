@@ -1,4 +1,4 @@
-"""HW2 Exercise 1 — Backtesting sentiment-based trading strategies.
+"""HW2 Exercise 1: Backtesting sentiment-based trading strategies.
 
 Designs one signal that is neither MA-crossover nor RSI (a sentiment slope
 confirmed by a news-volume z-score), tunes it on DB and HSBC and evaluates

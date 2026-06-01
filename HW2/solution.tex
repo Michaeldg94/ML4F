@@ -26,6 +26,10 @@
 \newcommand{\BH}{\mathrm{BH}}
 \newcommand{\ev}{\mathrm{ev}}
 
+% Reported figures, generated from output/ by make_macros.py. The prose cites
+% these macros so every number is defined once, from the data.
+\input{output/values.tex}
+
 \title{Homework 2 \\[0.3em] \large Machine Learning for Finance (21D012)\\
 Barcelona School of Economics}
 \author{Marco Canal \and Michael Duarte Gon\c{c}alves \and Olivia Peter}
@@ -123,8 +127,8 @@ only in part. The same family and the same timing, $L=W=20$ and $\tau=1$, are
 picked for both banks, and only the explanatory variable differs, BBr for DB and
 positiveP for HSBC. A stricter test freezes one bank's whole configuration and
 runs it unchanged on the other. That still clears buy-and-hold after costs: the
-DB rule earns a cumulative excess of $0.71$ on HSBC, and the HSBC rule earns
-$1.35$ on DB. To remove the hindsight altogether we also run a walk-forward
+DB rule earns a cumulative excess of $\DBruleOnHS$ on HSBC, and the HSBC rule
+earns $\HSruleOnDB$ on DB. To remove the hindsight altogether we also run a walk-forward
 test, which fixes the parameters on data before each evaluation window. It is
 reported in Section~\ref{sec:walkforward} and is the out-of-sample check.
 
@@ -160,11 +164,12 @@ explanation:
 \subsection{Deutsche Bank}
 The tuned configuration is $\ev=\mathrm{BBr}$, $L=W=20$ days, $\tau=1.0$.
 Table~\ref{tab:db_whole} gives the whole-period metrics. In long-short form the
-strategy returns a cumulative $1.31$ against a buy-and-hold of $-0.70$ over the
-$2.5$-year sample, an excess of $2.00$ after the cost on each of its
-$45$ trades. Its Sharpe is $237$ on this scaling, its annualised
-volatility $0.45$ and its worst drawdown $-0.38$ lasting $123$ trading days.
-The long-only version still beats buy-and-hold by $80$ points of cumulative
+strategy returns a cumulative $\DBlsCumRet$ against a buy-and-hold of
+$\DBbhCumRet$ over the $2.5$-year sample, an excess of $\DBlsExcess$ after the
+cost on each of its $\DBlsTrades$ trades. Its Sharpe is $\DBlsSharpe$ on this
+scaling, its annualised volatility $\DBlsAnnVol$ and its worst drawdown
+$\DBlsMaxDD$ lasting $\DBlsDDLen$ trading days. The long-only version still
+beats buy-and-hold by $\DBloExcessPts$ points of cumulative
 return, just by standing aside on weak-sentiment days. So a good part of the
 edge is staying out when the news turns bad, not the short leg alone. The equity
 curve in Figure~\ref{fig:db_equity} sits above the benchmark almost from the
@@ -197,19 +202,20 @@ of trades (position changes).}
 \end{table}
 
 Table~\ref{tab:db_rolling} reports the rolling-window analysis. At one-year
-windows the long-short configuration averages a positive excess of $0.819$ per
-window with a window-by-window standard deviation of $0.216$, and it beats
-buy-and-hold in every one of the $347$ overlapping windows. The six-month
+windows the long-short configuration averages a positive excess of
+$\DBrollExcessMean$ per window with a window-by-window standard deviation of
+$\DBrollExcessStd$, and it beats
+buy-and-hold in every one of the $\DBrollWindows$ overlapping windows. The six-month
 windows tell the same story at a shorter horizon, with a mean excess of
-$0.383$, and even the long-only configurations stay positive in mean excess at
+$\DBrollHalfExcessMean$, and even the long-only configurations stay positive in
+mean excess at
 both lengths. Trade counts scale as expected, around $20$ a year and $10$ a
 half-year, so the cost base stays modest relative to the gain. We stress that
-the $347$ one-year windows overlap heavily. They are far from independent
+the $\DBrollWindows$ one-year windows overlap heavily. They are far from independent
 experiments. So the perfect ExcessWin record describes the chosen in-sample
-rule across subperiods, not $347$ independent tests. ExcessWin is not the WinPct column. WinPct counts positive
-days inside a window, ExcessWin counts windows that beat the benchmark, and the
-two can pull apart: HSBC long-only at six months wins on most days (WinPct
-$0.59$) yet clears buy-and-hold in under half the windows (ExcessWin $0.47$).
+rule across subperiods, not $\DBrollWindows$ independent tests. ExcessWin is not the WinPct column.
+WinPct counts positive days inside a window, ExcessWin counts windows that beat
+the benchmark, and the two can pull apart.
 The distribution of per-window excess is shown in Figure~\ref{fig:db_dist}.
 
 \begin{table}[ht]
@@ -240,7 +246,8 @@ averages about $20$ trades per year.}
 \includegraphics[width=0.92\textwidth]{ex1/figures/01_equity_DB.pdf}
 \caption{Cumulative return of the DB slope-with-confirmation strategy with the
 1\% cost applied progressively, against DB buy-and-hold. The long-short
-configuration finishes near $+1.30$ while DB itself loses about $70\%$ over the
+configuration finishes near $+\DBlsCumRet$ while DB itself loses about
+$\DBbhLossPct\%$ over the
 sample.}
 \label{fig:db_equity}
 \end{figure}
@@ -249,7 +256,7 @@ sample.}
 \centering
 \includegraphics[width=0.92\textwidth]{ex1/figures/02_rolling_dist_DB.pdf}
 \caption{Per-window excess return $\Me-\BH$ for the DB long-short configuration
-across the $347$ one-year rolling windows. Every window is positive, with most
+across the $\DBrollWindows$ one-year rolling windows. Every window is positive, with most
 of the mass between $+0.5$ and $+1.0$ and a right tail past $+1.5$ for windows
 that include the March~2020 drawdown.}
 \label{fig:db_dist}
@@ -259,11 +266,15 @@ that include the March~2020 drawdown.}
 The tuned configuration is the same family with $\ev=\mathrm{positiveP}$,
 $L=W=20$ and $\tau=1.0$. Only the explanatory variable changes, from the
 bull-bear ratio to the positive-tone score. Table~\ref{tab:hsbc_whole} reports
-the whole-period metrics: a long-short cumulative return of $0.55$ against a
-buy-and-hold of $-0.61$, an excess of $1.17$ after $46$ trades, with a worst
-drawdown of $-0.11$. The rolling analysis in Table~\ref{tab:hsbc_rolling} gives
-a positive mean excess of $0.294$ at one-year windows with a $57\%$ win rate,
-again steady across window length and the long-short flag. The equity curve
+the whole-period metrics: a long-short cumulative return of $\HSlsCumRet$
+against a buy-and-hold of $\HSbhCumRet$, an excess of $\HSlsExcess$ after
+$\HSlsTrades$ trades, with a worst drawdown of $\HSlsMaxDD$. The rolling
+analysis in Table~\ref{tab:hsbc_rolling} gives a positive mean excess of
+$\HSrollExcessMean$ at one-year windows with a $\HSrollWinPct\%$ win rate,
+again steady across window length and the long-short flag. The six-month
+long-only case shows how the two win measures can diverge. It wins on most days
+(WinPct $\HSloWinPct$) yet clears buy-and-hold in under half the windows
+(ExcessWin $\HSloExcessWin$). The equity curve
 (Figure~\ref{fig:hsbc_equity}) drifts around the benchmark through 2018 and
 2019, then pulls clear as HSBC collapses in early 2020.
 
@@ -310,8 +321,8 @@ configurations are positive in mean excess.}
 \centering
 \includegraphics[width=0.92\textwidth]{ex1/figures/01_equity_HSBC.pdf}
 \caption{Cumulative return of the HSBC strategy with the 1\% cost applied
-progressively, against HSBC buy-and-hold. The strategy ends near $+0.55$ while
-HSBC loses about $61\%$ over the sample.}
+progressively, against HSBC buy-and-hold. The strategy ends near $+\HSlsCumRet$
+while HSBC loses about $\HSbhLossPct\%$ over the sample.}
 \label{fig:hsbc_equity}
 \end{figure}
 
@@ -327,17 +338,18 @@ parameters were fixed before that quarter happened.
 Table~\ref{tab:walkforward} shows the result for both banks across 2019 and the
 first quarter of 2020. The picture is weaker than the in-sample one. On DB
 the refitted rule beats buy-and-hold after costs in four of the five test
-quarters, with a mean test excess of $0.20$. On HSBC it wins in only two of
-five, with a mean of $0.11$. In both cases the average leans almost entirely on
-one quarter, January to April 2020, when the short leg caught the COVID crash
-and made $0.82$ on DB and $0.72$ on HSBC. Take that quarter out and the
+quarters, with a mean test excess of $\DBwfMean$. On HSBC it wins in only two of
+five, with a mean of $\HSwfMean$. In both cases the average leans almost
+entirely on one quarter, January to April 2020, when the short leg caught the
+COVID crash and made $\DBwfCrash$ on DB and $\HSwfCrash$ on HSBC. Take that quarter out and the
 out-of-sample edge is small on DB and slightly negative on HSBC.
 
 The train and test columns are where to look. The tuner does not always choose
 the submitted slope-with-confirmation rule. In the calmer quarters it often
 prefers a Bollinger or percentile rule on a different sentiment variable, which
 tells us no single configuration is reliably best once we stop looking at the
-answer. And the train excess, between $0.6$ and $1.3$, towers over the test
+answer. And the train excess, between $\wfTrainLo$ and $\wfTrainHi$, towers over the
+test
 excess of a few percent. That gap is the overfitting the in-sample tables cannot
 show. Taken together, the picture is plain. The signal has a modest,
 regime-dependent edge, and most of the headline performance earlier is
@@ -369,8 +381,9 @@ year (train exc. is its excess there), frozen, and scored on the next
 three-month test quarter (test exc., the excess $\Me-\BH$ after the 1\% cost).
 ``tuned rule'' is the family and explanatory variable the grid selected on the
 training window, always long-short, where Boll, Pctile and Slope are the
-Bollinger, percentile and slope-with-confirmation families. DB averages $+0.20$
-test excess and is positive in four of five quarters, HSBC averages $+0.11$ and
+Bollinger, percentile and slope-with-confirmation families. DB averages
+$+\DBwfMean$ test excess and is positive in four of five quarters, HSBC averages
+$+\HSwfMean$ and
 is positive in two of five, both leaning on the March 2020 quarter.}
 \label{tab:walkforward}
 \end{table}
@@ -425,7 +438,8 @@ q \sim U(0,0.03),\;
 with the spot fixed at $S_0=100$, where $K$ is the strike, $T$ the maturity,
 $r$ the risk-free rate, $q$ the dividend yield and $\sigma$ the volatility. The
 contract type is drawn uniformly so the dataset mixes puts and calls (the
-realised draw has $522$ puts and $478$ calls). The type enters the feature set
+realised draw has $\AmPuts$ puts and $\AmCalls$ calls). The type enters the
+feature set
 as a binary indicator, one for a call and zero for a put. Uniform sampling is
 appropriate
 because the pricing function is smooth in these variables and even grid coverage
@@ -441,7 +455,7 @@ value at tree node $(i,j)$, and the American feature
 enters by replacing it with the larger of continuation value and immediate
 exercise value. This early-exercise comparison is exactly why a tree suits the
 American options. The full sample prices in about $6$
-seconds, $6.3$ milliseconds per option.
+seconds, $\AmNumMs$ milliseconds per option.
 
 \subsection{Pricing barrier options}
 For the barrier call we draw $n=1000$ Heston combinations with
@@ -468,7 +482,7 @@ $B$ and equals the call payoff otherwise. We integrate the price in log form and
 full-truncation Euler scheme to keep the
 square-root terms well defined, using $100$ time steps and $10{,}000$
 antithetic paths per option. The engine itself is the deliverable of
-Problem~3. The full sample prices in about $19$ seconds, $18.9$ milliseconds
+Problem~3. The full sample prices in about $19$ seconds, $\BaNumMs$ milliseconds
 per option.
 
 Two approximations are worth flagging. We monitor the barrier on the simulation
@@ -476,8 +490,8 @@ grid, so strictly we price a \emph{discretely} monitored version of the
 continuously monitored contract in the brief. A finer grid or a Brownian-bridge
 correction would shrink the bias near the barrier. And the Monte Carlo labels
 carry simulation noise, which we measure: across the $1000$ barrier options the
-antithetic standard error of the price averages $0.083$, with a $90$th
-percentile of $0.137$ (Table~\ref{tab:mc_se}). That is the noise floor any
+antithetic standard error of the price averages $\BaSEmean$, with a $90$th
+percentile of $\BaSEpHi$ (Table~\ref{tab:mc_se}). That is the noise floor any
 surrogate is judged against.
 
 \subsection{The surrogates}
@@ -521,7 +535,7 @@ is the one-off training time. ``pred'' is the prediction time in milliseconds
 per option. ``speedup'' is the numerical per-option time divided by the ML
 prediction time. ``break-even'' is the number of priced options at which the
 training cost is repaid (Section~2e). The numerical per-option times are
-$6.3$~ms (American) and $18.9$~ms (Barrier). MAPE is computed on options worth
+$\AmNumMs$~ms (American) and $\BaNumMs$~ms (Barrier). MAPE is computed on options worth
 at least $1\%$ of $S_0$ so a few near-zero contracts do not dominate it.}
 \label{tab:ml_metrics}
 \end{table}
@@ -549,8 +563,8 @@ violation rates are a fair picture of where a production system would want a
 clamp. One bound is barrier-specific. A down-and-out call must weakly lose value
 as the barrier $B$ rises toward spot, because knock-out grows more likely. We
 test this by bumping $B$ by two points on each test option and checking the
-predicted price does not rise. The GPR keeps the price monotone on $74\%$ of
-cases and the NN on $76\%$. At roughly three-quarters, the surrogate is not
+predicted price does not rise. The GPR keeps the price monotone on $\BaMonoGPR\%$ of
+cases and the NN on $\BaMonoNN\%$. At roughly three-quarters, the surrogate is not
 production-safe in $B$, since neither model enforces the bound. A deployed pricer
 would add a monotonicity constraint or a post-processing step such as isotonic
 projection along the barrier. The check is cheap and finance-specific, and it is
@@ -620,9 +634,9 @@ On the American surface the GPR reaches an $R^2$ all but equal to one, with a
 typical error around five cents on prices that run from zero to forty, and it
 prices puts and calls equally well from a single model. On the barrier surface
 the target is not the exact Heston price but a Monte Carlo estimate, so the test
-residual mixes model error and label noise. The GPR MAE of $0.122$ sits right at
-the noise floor of those labels (mean standard error $0.083$, with a $90$th
-percentile of $0.137$). That means it has reached about the best a surrogate can
+residual mixes model error and label noise. The GPR MAE of $\BaGPRmae$ sits right at
+the noise floor of those labels (mean standard error $\BaSEmean$, with a $90$th
+percentile of $\BaSEpHi$). That means it has reached about the best a surrogate can
 do against noisy targets, not that it is a tenth of a euro from the true price.
 The network is an order of
 magnitude cheaper to fit and to query, at the cost of two to three times the
@@ -636,9 +650,9 @@ cost that we only repay after enough queries. The break-even count is
 N_{BE} = \frac{T_{\text{fit}}}{t_{\text{num}}-t_{\text{pred}}},
 \]
 training time over the per-query time saved, \emph{not} the number of training
-samples divided by the speedup. With our timings this is about $5{,}100$
-American GPR queries, $530$ American NN queries, $5{,}100$ Barrier GPR queries
-and just over $100$ Barrier NN queries. Below those counts the numerical pricer is cheaper
+samples divided by the speedup. With our timings this is about $\AmGPRbe$
+American GPR queries, $\AmNNbe$ American NN queries, $\BaGPRbe$ Barrier GPR
+queries and just over $\BaNNbe$ Barrier NN queries. Below those counts the numerical pricer is cheaper
 if no model exists yet. Above them, which is the normal regime in production
 where the same parameter range is queried thousands of times, the surrogate is
 decisively faster. The exact break-even is hardware-dependent (these timings are
@@ -696,12 +710,13 @@ numerics, not the risk-neutral Heston model.
 
 \subsection{Vanilla benchmark}
 Table~\ref{tab:euler} prices a European call with $S_0=K=100$, $T=1$, $r=0.03$,
-$\sigma=0.25$, whose Black-Scholes value is $11.348$. The scalar baseline runs
+$\sigma=0.25$, whose Black-Scholes value is $\BSMref$. The scalar baseline runs
 only $2{,}000$ paths, the most that is tractable in pure Python. Vectorisation
 buys the dominant gain, close to two orders of magnitude per path while reaching
 ten times as many paths. Antithetic variates roughly halve the runtime by
 drawing $N/2$ shocks instead of $N$. For this one fixed seed the signed pricing
-error also falls, from $+0.231$ for V1 to $+0.065$ for V2, but a single signed
+error also falls, from $\EulerErrVone$ for V1 to $\EulerErrVtwo$ for V2, but a
+single signed
 error is not a variance. The true variance reduction is the one in
 Figure~\ref{fig:conv}, where the RMS error is averaged over $20$ seeds. Log-Euler
 shaves a little more time and removes the small arithmetic bias. The Sobol variant is slower per run because the generator costs more than a
@@ -723,7 +738,7 @@ V3 & V2 + log-Euler                & 11.412 & $+0.064$ &  20 & 20{,}000 \\
 V4 & V3 + Sobol QMC                & 11.296 & $-0.052$ & 195 & 20{,}000 \\
 \bottomrule
 \end{tabular}
-\caption{Vanilla European-call benchmark. Black-Scholes truth $11.348$. V0 runs
+\caption{Vanilla European-call benchmark. Black-Scholes truth $\BSMref$. V0 runs
 at $2{,}000$ paths because the scalar loop is too slow at $20{,}000$. Prices and
 errors are reproducible from the fixed seed. Timings are from the benchmarking
 machine.}
@@ -743,10 +758,10 @@ variant V4 breaks below it for larger $N$.}
 For the Heston down-and-out call with $S_0=K=100$, $T=1$, $r=0.03$,
 $v_0=\theta=0.04$, $\kappa=2$, $\eta=0.3$, $\rho=-0.5$, $B=80$ we compare the
 scalar naive scheme against the vectorised full-truncation engine used in
-Problem~2. The scalar version prices $1{,}000$ paths in $518$ milliseconds, which
-scales to roughly $5{,}200$ milliseconds for the $10{,}000$ paths a stable
-barrier price needs. The vectorised engine prices $10{,}000$ paths in $31$
-milliseconds. That is well over a hundredfold speedup, and it is what makes the
+Problem~2. The scalar version prices $1{,}000$ paths in $\HesScalarMs$ milliseconds, which
+scales to roughly $\HesScaledMs$ milliseconds for the $10{,}000$ paths a stable
+barrier price needs. The vectorised engine prices $10{,}000$ paths in
+$\HesVecMs$ milliseconds. That is well over a hundredfold speedup, and it is what makes the
 $1000$-option ground truth of Problem~2 feasible in well under a minute rather
 than tens of minutes.
 

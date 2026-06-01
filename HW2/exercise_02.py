@@ -1,4 +1,4 @@
-"""HW2 Exercise 2 — Machine learning for option valuation.
+"""HW2 Exercise 2: Machine learning for option valuation.
 
 Learns the pricing map of two contracts from synthetic data: American
 Put/Call options labelled by a Cox-Ross-Rubinstein binomial tree, and
