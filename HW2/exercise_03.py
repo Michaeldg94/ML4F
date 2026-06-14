@@ -1,45 +1,17 @@
-# =============================================================================
-# exercise_03.py
-# HW2 ex 3: Improvements to the Euler MC method for faster simulations
-#
-# Team:    Marco Canal, Michael Duarte Goncalves, Olivia Peter
-# Date:    2026-05-22
-#
-# PURPOSE:
-#   Document and benchmark four cumulative improvements to the loop-based
-#   Euler Monte Carlo method shown in Pylab10:
-#     V0  baseline scalar loop (one path, one time step, Python inner loop),
-#     V1  vectorised paths (NumPy SIMD across the path dimension),
-#     V2  vectorised + antithetic variates (variance reduction by mirroring
-#         each normal draw),
-#     V3  vectorised + antithetic + log-Euler discretisation (exactly
-#         positive prices, no exponential drift correction needed in time
-#         integration),
-#     V4  vectorised + antithetic + log-Euler + Sobol quasi-Monte-Carlo
-#         sequence (better than pseudo-random convergence rate near 1/N).
-#
-#   For each variant we price a vanilla European Call by Monte Carlo, time
-#   the computation, and compare against the Black-Scholes-Merton closed
-#   form. We report wall-clock time, mean price, MC standard error, and the
-#   pricing error vs BSM. We also benchmark the corresponding Heston full-
-#   truncation scheme used by exercise_02 against a naive scalar Heston.
-#
-# INPUTS:
-#   None.
-#
-# OUTPUTS:
-#   output/ex03_euler_bench.csv     (BSM/European benchmarks)
-#   output/ex03_heston_bench.csv    (Heston benchmarks)
-#   output/ex03_convergence.pdf     (error vs n_paths for each variant)
-#
-# STRUCTURE:
-#   Part 1: Imports, paths
-#   Part 2: BSM closed-form reference price
-#   Part 3: Vanilla GBM Euler variants V0 to V4
-#   Part 4: Heston variants (scalar naive vs vectorised full-truncation)
-#   Part 5: Benchmark driver
-#   Part 6: Convergence plot
-# =============================================================================
+"""HW2 Exercise 3: Faster Euler Monte Carlo.
+
+Four cumulative speedups over the lab's loop-based Euler MC, benchmarked on a
+vanilla European call against the Black-Scholes truth:
+    V0  scalar Python loop (baseline),
+    V1  vectorised across paths,
+    V2  + antithetic variates,
+    V3  + log-Euler (exact for GBM),
+    V4  + scrambled Sobol quasi-Monte-Carlo.
+We also pit the vectorised full-truncation Heston engine of exercise_02
+against a naive scalar Heston. Outputs land in output/ex3/.
+
+Authors: Marco Canal, Michael Duarte Gonçalves, Olivia Peter.
+"""
 
 import time
 from pathlib import Path
@@ -54,13 +26,14 @@ SEED = 42
 np.random.seed(SEED)
 
 ROOT = Path(__file__).resolve().parent
-OUT_DIR = ROOT / "output"
-OUT_DIR.mkdir(parents=True, exist_ok=True)
+OUT_DIR = ROOT / "output" / "ex3"        # exercise-3 outputs live here
+FIG_DIR = OUT_DIR / "figures"            # plots, numbered within this folder
+TAB_DIR = OUT_DIR / "tables"             # CSVs, numbered within this folder
+for _d in (FIG_DIR, TAB_DIR):
+    _d.mkdir(parents=True, exist_ok=True)
 
 
-# =============================================================================
-# Part 2: Black-Scholes-Merton reference
-# =============================================================================
+# --- Black-Scholes-Merton reference ------------------------------------------
 
 def bsm_call(S0, K, T, r, sigma):
     """Black-Scholes-Merton closed-form European Call price."""
@@ -69,13 +42,10 @@ def bsm_call(S0, K, T, r, sigma):
     return S0 * si.norm.cdf(d1) - K * np.exp(-r * T) * si.norm.cdf(d2)
 
 
-# =============================================================================
-# Part 3: Vanilla GBM Euler MC variants
-# =============================================================================
-# All variants price a European Call on a non-dividend-paying asset under
-# geometric Brownian motion with constant volatility sigma. They differ
-# only in how the random walk is discretised and in which random source is
-# used.
+# --- Vanilla GBM Euler MC variants -------------------------------------------
+# All variants price a European call on a non-dividend asset under geometric
+# Brownian motion with constant volatility. They differ only in how the walk
+# is discretised and in which random source feeds it.
 
 def euler_v0_scalar(S0, K, T, r, sigma, n_steps, n_paths, seed):
     """V0: faithful translation of the lab's loop-based Euler MC. Two
@@ -127,10 +97,8 @@ def euler_v2_vec_anti(S0, K, T, r, sigma, n_steps, n_paths, seed):
 
 
 def euler_v3_log_anti(S0, K, T, r, sigma, n_steps, n_paths, seed):
-    """V3: log-Euler + antithetic. Discretise log S directly:
-        log S_{t+dt} = log S_t + (r - 0.5 sigma^2) dt + sigma sqrt(dt) Z.
-    This is exact for GBM (no discretisation error in the path mean) and
-    guarantees S stays positive."""
+    """V3: log-Euler + antithetic. Steps log S directly, which is exact for
+    GBM and keeps S positive."""
     rng = np.random.default_rng(seed)
     half = n_paths // 2
     dt = T / n_steps
@@ -148,10 +116,8 @@ def euler_v3_log_anti(S0, K, T, r, sigma, n_steps, n_paths, seed):
 
 
 def euler_v4_qmc(S0, K, T, r, sigma, n_steps, n_paths, seed):
-    """V4: log-Euler + antithetic + Sobol QMC. Replaces the pseudo-random
-    normal draws with a scrambled Sobol sequence mapped through the
-    inverse normal CDF. Achieves near-O(1/N) convergence instead of the
-    O(1/sqrt N) of pseudo-Monte-Carlo, at a tiny generation cost."""
+    """V4: log-Euler + antithetic + scrambled Sobol QMC, for faster than
+    pseudo-random convergence at a small generation cost."""
     half = n_paths // 2
     sampler = qmc.Sobol(d=n_steps, scramble=True, seed=seed)
     u = sampler.random(half)
@@ -170,15 +136,12 @@ def euler_v4_qmc(S0, K, T, r, sigma, n_steps, n_paths, seed):
     return np.exp(-r * T) * payoff.mean()
 
 
-# =============================================================================
-# Part 4: Heston variants for ex 2 ground-truth context
-# =============================================================================
+# --- Heston variants: naive scalar vs vectorised full-truncation -------------
 
 def heston_scalar_naive(S0, K, T, r, q, v0, theta, kappa, eta, rho, B,
                         n_steps, n_paths, seed):
-    """Naive scalar Heston MC: nested Python loops, partial-truncation
-    variance (clipped after each step), no antithetic. Used here only as
-    the slow baseline for the Heston benchmark; do not use for production."""
+    """Naive scalar Heston MC (nested loops, no antithetic). The slow
+    baseline for the Heston benchmark only."""
     rng = np.random.default_rng(seed)
     dt = T / n_steps
     sqrt_dt = np.sqrt(dt)
@@ -193,7 +156,8 @@ def heston_scalar_naive(S0, K, T, r, q, v0, theta, kappa, eta, rho, B,
             W1 = Z1
             W2 = rho * Z1 + np.sqrt(1.0 - rho * rho) * Z2
             v_eff = max(v, 0.0)
-            v = v + kappa * (theta - v_eff) * dt + eta * np.sqrt(v_eff) * sqrt_dt * W2
+            v = (v + kappa * (theta - v_eff) * dt
+                 + eta * np.sqrt(v_eff) * sqrt_dt * W2)
             v = max(v, 0.0)
             S = S + r * S * dt + np.sqrt(v_eff) * S * sqrt_dt * W1 - q * S * dt
             if S <= B:
@@ -205,10 +169,8 @@ def heston_scalar_naive(S0, K, T, r, q, v0, theta, kappa, eta, rho, B,
 
 def heston_vec_fulltrunc(S0, K, T, r, q, v0, theta, kappa, eta, rho, B,
                          n_steps, n_paths, seed):
-    """Improved vectorised Heston used by exercise_02. Full-truncation
-    Euler for variance, antithetic variates, log-Euler price. The path-
-    wise knockout check is preserved through a boolean mask updated in
-    place each step."""
+    """Vectorised Heston used by exercise_02: full-truncation variance,
+    antithetic variates, log-Euler price, with a path-wise knockout mask."""
     rng = np.random.default_rng(seed)
     half = n_paths // 2
     dt = T / n_steps
@@ -223,16 +185,16 @@ def heston_vec_fulltrunc(S0, K, T, r, q, v0, theta, kappa, eta, rho, B,
         Z2_full = np.concatenate([Z2, -Z2])
         W2 = rho * W1 + np.sqrt(1.0 - rho * rho) * Z2_full
         v_pos = np.maximum(v, 0.0)
-        v = v + kappa * (theta - v_pos) * dt + eta * np.sqrt(v_pos) * sqrt_dt * W2
-        S = S * np.exp((r - q - 0.5 * v_pos) * dt + np.sqrt(v_pos) * sqrt_dt * W1)
+        v = (v + kappa * (theta - v_pos) * dt
+             + eta * np.sqrt(v_pos) * sqrt_dt * W2)
+        S = S * np.exp((r - q - 0.5 * v_pos) * dt
+                       + np.sqrt(v_pos) * sqrt_dt * W1)
         alive = alive & (S > B)
     payoff = np.where(alive, np.maximum(S - K, 0.0), 0.0)
     return np.exp(-r * T) * payoff.mean()
 
 
-# =============================================================================
-# Part 5: Benchmark driver
-# =============================================================================
+# --- Benchmark driver --------------------------------------------------------
 
 def bench_one(name, fn, kwargs, true_value=None):
     """Time fn on kwargs and return (name, price, time_ms, abs_err)."""
@@ -255,8 +217,8 @@ def bench_euler():
     true_value = bsm_call(S0, K, T, r, sigma)
 
     variants = [
-        ("V0 scalar loop", euler_v0_scalar,
-         dict(kwargs, n_paths=2000)),  # baseline at lower n_paths so it is tractable
+        # V0 runs at fewer paths because the scalar loop is slow.
+        ("V0 scalar loop", euler_v0_scalar, dict(kwargs, n_paths=2000)),
         ("V1 vectorised", euler_v1_vec, kwargs),
         ("V2 + antithetic", euler_v2_vec_anti, kwargs),
         ("V3 + log-Euler", euler_v3_log_anti, kwargs),
@@ -344,10 +306,10 @@ def bench_convergence(n_seeds=20):
               "k:", linewidth=0.6, label="ref. 1/N")
     ax.set_xlabel("number of paths N")
     ax.set_ylabel(f"RMS |MC - BSM| over {n_seeds} seeds")
-    ax.set_title(f"Convergence of Euler MC variants ({n_seeds} seeds averaged)")
+    ax.set_title(f"Euler MC convergence ({n_seeds} seeds averaged)")
     ax.legend()
     fig.tight_layout()
-    fig.savefig(OUT_DIR / "ex03_convergence.pdf", bbox_inches="tight")
+    fig.savefig(FIG_DIR / "01_convergence.pdf", bbox_inches="tight")
     plt.close(fig)
     return df
 
@@ -355,15 +317,15 @@ def bench_convergence(n_seeds=20):
 def main():
     print("=== Vanilla Euler MC benchmark ===")
     euler_df, _ = bench_euler()
-    euler_df.to_csv(OUT_DIR / "ex03_euler_bench.csv", index=False)
+    euler_df.to_csv(TAB_DIR / "01_euler_bench.csv", index=False)
 
     print("\n=== Heston MC benchmark ===")
     heston_df = bench_heston()
-    heston_df.to_csv(OUT_DIR / "ex03_heston_bench.csv", index=False)
+    heston_df.to_csv(TAB_DIR / "02_heston_bench.csv", index=False)
 
     print("\n=== Convergence study ===")
     conv_df = bench_convergence()
-    conv_df.to_csv(OUT_DIR / "ex03_convergence.csv", index=False)
+    conv_df.to_csv(TAB_DIR / "03_convergence.csv", index=False)
     print("  saved convergence plot")
 
 

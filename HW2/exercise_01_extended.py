@@ -1,30 +1,14 @@
-# =============================================================================
-# exercise_01_extended.py
-# HW2 ex 1: extended exploration. Runs the four submitted sentiment
-# strategies plus three new families on all ten full-history tickers in
-# dataSent and reports the per-ticker winners.
-#
-# Team:    Marco Canal, Michael Duarte Goncalves, Olivia Peter
-# Date:    2026-05-22
-#
-# PURPOSE:
-#   Beyond the submitted exercise_01.py, we explore additional sentiment-
-#   driven signal families and additional stocks. New families are.
-#     Z-score mean reversion on ev (contrarian; opposite sign to Bollinger
-#         breakout), buy when ev is unusually cheap on a rolling z-score
-#         and exit when ev is unusually rich,
-#     Rate-of-change momentum on ev (simple percentage change over L days),
-#     Stochastic oscillator on ev (%K and %D crossover within extreme
-#         zones, adapted from the classic Lane indicator).
-#   We run all seven strategy families across AAPL, AMZN, DB, DIS, FB,
-#   GOOG, HSBC, JPM, MSFT, PFE for both long-only and long-short and for
-#   the two window sizes 254 and 127, with the same one-percent cost.
-#
-# OUTPUTS:
-#   output/ex01_ext_whole.csv       (whole-period winners per ticker/strategy/ev/ls)
-#   output/ex01_ext_rolling.csv     (rolling-window analysis for those winners)
-#   output/ex01_ext_top.csv         (top-rolling winners by ticker)
-# =============================================================================
+"""HW2 Exercise 1 (extended): wider sentiment-strategy exploration.
+
+Reuses the exercise_01 engine and adds three signal families (z-score mean
+reversion, rate-of-change momentum, stochastic oscillator), then sweeps all
+seven families across ten tickers, both trade directions and both window
+sizes under the same 1% cost. This is exploratory back-office work to check
+the submitted rule is not a fluke; it is not part of the graded report.
+Outputs land in output/ex01_ext_*.
+
+Authors: Marco Canal, Michael Duarte Gonçalves, Olivia Peter.
+"""
 
 import itertools
 from pathlib import Path
@@ -38,10 +22,11 @@ import pandas as pd
 import exercise_01 as ex1
 
 ROOT = Path(__file__).resolve().parent
-OUT = ROOT / "output"
+OUT = ROOT / "output" / "ex1" / "tables"  # shares the exercise-1 tables folder
 OUT.mkdir(parents=True, exist_ok=True)
 
-TICKERS = ["AAPL", "AMZN", "DB", "DIS", "FB", "GOOG", "HSBC", "JPM", "MSFT", "PFE"]
+TICKERS = ["AAPL", "AMZN", "DB", "DIS", "FB",
+           "GOOG", "HSBC", "JPM", "MSFT", "PFE"]
 TCOST = ex1.TCOST
 WINDOW_SIZES = ex1.WINDOW_SIZES
 LONGSHORT = ex1.LONGSHORT_SETTINGS
@@ -173,7 +158,8 @@ def run_ticker(ticker):
                 params, _, perf = tune(price, ev, rvt, strategy, ls)
                 if params is None:
                     continue
-                excess_whole = perf.loc["CumRet", "Me"] - perf.loc["CumRet", "BH"]
+                excess_whole = (perf.loc["CumRet", "Me"]
+                                - perf.loc["CumRet", "BH"])
                 whole_rows.append({
                     "ticker": ticker, "strategy": strategy, "ev": ev_name,
                     "longshort": ls, "params": str(params),
@@ -219,16 +205,16 @@ def main():
 
     big_whole = pd.concat(all_whole, ignore_index=True)
     big_rolling = pd.concat(all_rolling, ignore_index=True)
-    big_whole.to_csv(OUT / "ex01_ext_whole.csv", index=False)
-    big_rolling.to_csv(OUT / "ex01_ext_rolling.csv", index=False)
+    big_whole.to_csv(OUT / "07_ext_whole.csv", index=False)
+    big_rolling.to_csv(OUT / "08_ext_rolling.csv", index=False)
 
     # Top per (ticker, w_size, longshort): the highest mean excess that
     # also has at least one trade per window on average
     elig = big_rolling[big_rolling["Me_nTrades_mean"] >= 1.0].copy()
     top = (elig.sort_values("excess_mean", ascending=False)
-                 .groupby(["ticker", "w_size", "longshort"]).head(1)
-                 .reset_index(drop=True))
-    top.to_csv(OUT / "ex01_ext_top.csv", index=False)
+           .groupby(["ticker", "w_size", "longshort"]).head(1)
+           .reset_index(drop=True))
+    top.to_csv(OUT / "09_ext_top.csv", index=False)
 
     # Headline summary: best long-short configuration per ticker at w=254
     headline = top[(top["w_size"] == 254) & (top["longshort"] == -1)].copy()

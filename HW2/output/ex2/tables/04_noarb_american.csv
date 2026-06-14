@@ -1,0 +1,3 @@
+label,model,frac_negative,frac_below_intrinsic,frac_above_upper_bound
+american,GPR,0.005,0.02,0.0
+american,NN,0.01,0.03,0.0

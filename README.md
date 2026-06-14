@@ -89,7 +89,7 @@ See `HW1/solution.pdf` cover page.
 ## HW2
 
 The full problem set is inside [`HW2/`](HW2/). The compiled report is
-[`HW2/solution.pdf`](HW2/solution.pdf) (9 pages).
+[`HW2/solution.pdf`](HW2/solution.pdf) (14 pages).
 
 ### Layout
 
@@ -101,23 +101,19 @@ HW2/
 ├── exercise_01_extended.py       Ex 1: extended search over all full-history tickers
 ├── exercise_02.py                Ex 2: GPR + feed-forward NN option pricing
 ├── exercise_03.py                Ex 3: Euler MC speed-ups V0-V4 + Heston full-truncation
+├── make_macros.py                writes output/values.tex (the numbers the report cites)
 ├── requirements.txt              exact-pin dependencies (Python 3.11)
 ├── solution.tex                  LaTeX source of the report
-├── solution.pdf                  compiled report (9 pages)
-└── output/                       all generated artefacts
-    ├── ex01_whole_*.csv          Ex 1: whole-period metrics per ticker
-    ├── ex01_rolling_*.csv        Ex 1: rolling-window summaries (w = 254 and 127)
-    ├── ex01_tuning_*.csv         Ex 1: grid-search trace per strategy family
-    ├── ex01_equity_*.pdf         Ex 1: equity curve, strategy vs buy-and-hold
-    ├── ex01_signals_*.pdf        Ex 1: signal vs price and ev
-    ├── ex01_rolling_dist_*.pdf   Ex 1: per-window excess distribution at w = 254
-    ├── ex02_dataset_*.csv        Ex 2: synthetic (X, y) option-price datasets
-    ├── ex02_metrics_*.csv        Ex 2: per-model accuracy and inference speedup
-    ├── ex02_pred_vs_true_*.pdf   Ex 2: predicted vs true price scatter
-    ├── ex02_residuals_*.pdf      Ex 2: residual plots
-    ├── ex03_euler_bench.csv      Ex 3: V0-V4 vanilla European-call benchmark
-    ├── ex03_heston_bench.csv     Ex 3: scalar vs vectorised full-truncation Heston
-    └── ex03_convergence.{csv,pdf} Ex 3: RMS error vs path count, 20 seeds averaged
+├── solution.pdf                  compiled report (14 pages)
+├── BSE_Task2_Team5_*.zip         Classroom submission (report + code only)
+└── output/                       generated artefacts, grouped by exercise
+    ├── values.tex                report numbers as LaTeX macros (from make_macros.py)
+    ├── ex1/figures/              Ex 1: equity, signal and per-window excess plots
+    ├── ex1/tables/               Ex 1: whole-period, rolling, tuning and walk-forward CSVs
+    ├── ex2/figures/              Ex 2: predicted-vs-true and residual plots
+    ├── ex2/tables/               Ex 2: datasets, metrics, put/call split and no-arb CSVs
+    ├── ex3/figures/              Ex 3: convergence plot
+    └── ex3/tables/               Ex 3: Euler and Heston benchmark CSVs
 ```
 
 ### Just want to inspect the results?
@@ -139,6 +135,9 @@ python3 exercise_02.py
 
 # Exercise 3 (Euler MC improvements + convergence study; about 30 s on CPU)
 python3 exercise_03.py
+
+# Regenerate the report numbers (writes output/values.tex)
+python3 make_macros.py
 
 # Recompile the report (TeX Live; pdflatex twice for cross-references)
 pdflatex solution.tex && pdflatex solution.tex

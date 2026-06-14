@@ -1,0 +1,4 @@
+variant,price,time_ms,abs_err,n_paths
+scalar naive Heston (1000 paths),9.039693465710007,518.393532999653,,1000
+vectorised full-truncation Heston (10000 paths),9.264842945831402,31.34382700045535,,10000
+scalar naive Heston (scaled to 10000 paths),9.039693465710007,5183.93532999653,,10000
